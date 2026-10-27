@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Film } from "lucide-react";
+import { Film, Mic } from "lucide-react";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Segment } from "@/lib/types";
@@ -9,6 +9,8 @@ import type { Playback } from "./use-playback";
 
 const PAD = 16; // horizontal breathing room so 0:00 and the end aren't glued to the edges
 const RULER_H = 28;
+const VIDEO_TOP = RULER_H + 12;
+const VOICE_TOP = VIDEO_TOP + 56 + 8;
 
 // Ruler spacing: pick the smallest major step that keeps labels ~72px apart.
 const STEPS: [major: number, minorDivisions: number][] = [
@@ -104,45 +106,72 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments }: Props) {
               ))}
             </div>
 
-            {/* Video track */}
-            <div className="absolute" style={{ top: RULER_H + 12, left: xOf(0), width: duration * pps }}>
-              <div
-                className="relative h-14 overflow-hidden rounded-lg border bg-muted"
-                style={
-                  thumbnailUrl
-                    ? { backgroundImage: `url(${thumbnailUrl})`, backgroundSize: "auto 100%", backgroundRepeat: "repeat-x" }
-                    : undefined
-                }
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-black/45 via-black/10 to-transparent" />
-                <span className="absolute top-1.5 left-2 flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
-                  <Film className="size-3" /> Recording · {formatTime(duration)}
-                </span>
-              </div>
-              {!segments?.length && (
-                <div className="mt-2 flex h-9 items-center justify-center rounded-lg border border-dashed text-[11px] text-muted-foreground">
-                  Script paragraphs will appear here after transcription
-                </div>
-              )}
-            </div>
-
-            {/* Segments track */}
-            {segments?.map((seg, i) => {
-              const active = currentTime >= seg.start && currentTime < seg.end;
+            {/* Video track: one filmstrip, split at paragraph boundaries */}
+            {(segments?.length ? segments : [null]).map((seg, i) => {
+              const from = seg?.start ?? 0;
+              const to = seg?.end ?? duration;
+              const split = !!segments?.length;
               return (
                 <div
-                  key={seg.id}
-                  className={cn(
-                    "absolute flex h-9 items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-[11px] transition-colors duration-150",
-                    active ? "border-brand/50 bg-brand/[0.06] text-foreground" : "bg-white text-muted-foreground hover:bg-[#FAFAFB]",
-                  )}
-                  style={{ top: RULER_H + 12 + 56 + 8, left: xOf(seg.start) + 1, width: Math.max(2, (seg.end - seg.start) * pps - 2) }}
+                  key={seg?.id ?? "all"}
+                  className="absolute h-14 overflow-hidden rounded-lg border bg-muted"
+                  style={{
+                    top: VIDEO_TOP,
+                    left: xOf(from) + (split ? 1 : 0),
+                    width: Math.max(2, (to - from) * pps - (split ? 2 : 0)),
+                    ...(thumbnailUrl && {
+                      backgroundImage: `url(${thumbnailUrl})`,
+                      backgroundSize: "auto 100%",
+                      backgroundRepeat: "repeat-x",
+                      backgroundPositionX: -(from * pps), // frames continue across the splits
+                    }),
+                  }}
                 >
-                  <span className={cn("shrink-0 font-medium", active && "text-brand")}>{i + 1}</span>
-                  <span className="truncate">{seg.text}</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-black/5 to-transparent" />
+                  <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+                    {split ? (
+                      i + 1
+                    ) : (
+                      <>
+                        <Film className="size-3" /> Recording · {formatTime(duration)}
+                      </>
+                    )}
+                  </span>
                 </div>
               );
             })}
+
+            {/* Voice track: only where there's narration, silence stays empty */}
+            {segments?.length ? (
+              segments.map((seg, i) => {
+                const active = currentTime >= seg.speechStart && currentTime < seg.speechEnd;
+                return (
+                  <div
+                    key={seg.id}
+                    className={cn(
+                      "absolute flex h-8 items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-[11px] transition-colors duration-150",
+                      active ? "border-brand/50 bg-brand/[0.07] text-foreground" : "border-[#DCDCE1] bg-[#F3F3F5] text-muted-foreground",
+                    )}
+                    style={{
+                      top: VOICE_TOP,
+                      left: xOf(seg.speechStart),
+                      width: Math.max(4, (seg.speechEnd - seg.speechStart) * pps),
+                    }}
+                  >
+                    <Mic className={cn("size-3 shrink-0", active && "text-brand")} />
+                    <span className="shrink-0 font-medium">{i + 1}</span>
+                    <span className="truncate opacity-70">{(seg.speechEnd - seg.speechStart).toFixed(1)}s</span>
+                  </div>
+                );
+              })
+            ) : (
+              <div
+                className="absolute flex h-8 items-center justify-center rounded-lg border border-dashed text-[11px] text-muted-foreground"
+                style={{ top: VOICE_TOP, left: xOf(0), width: duration * pps }}
+              >
+                Your voice will appear here after transcription
+              </div>
+            )}
 
             {/* Hover guide */}
             {hoverT !== null && !dragging && (

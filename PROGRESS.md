@@ -63,7 +63,7 @@ src/
     editor/left-panel.tsx            collapsible panel, 5 tabs with animated underline, empty states
     editor/preview.tsx               dot-grid canvas, aspect-fit framed <video>, play overlay, codec error state
     editor/control-bar.tsx           captions/cut (inactive placeholders), play, time, volume, timeline zoom
-    editor/timeline.tsx              ruler (adaptive ticks), filmstrip video track, segments track, hover guide, draggable playhead, auto-follow
+    editor/timeline.tsx              ruler (adaptive ticks), filmstrip video track split at paragraph boundaries, voice track (blocks only where you speak; silence stays empty; Step 5 voice clips go here), hover guide, draggable playhead, auto-follow
     ui/                              shadcn: alert-dialog, button, input, skeleton, slider, sonner, tooltip
   lib/
     types.ts                         Project types
