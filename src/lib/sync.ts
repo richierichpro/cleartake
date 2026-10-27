@@ -1,5 +1,6 @@
 import type { Project, TranscriptWord } from "./types";
 import { clipStatus, estimateSeconds, voiceOf } from "./voice-settings";
+import { removedRanges, subtractRanges } from "./edits";
 
 // Pure functions: activity map → cleanup → per-paragraph sync → timeline pieces.
 // Shared by the editor (debug view, Step 7 preview) and the server (Step 8 export).
@@ -177,10 +178,13 @@ export function buildSyncPlan(
   const v = voiceOf(project);
   const aiMode = v.mode === "ai";
 
-  // Kept stretches of the source after cleanup
-  const kept = runsOf(speed)
-    .filter((r) => r.value > 0)
-    .map((r) => ({ sourceStart: time(r.start), sourceEnd: time(r.end), speed: r.value }));
+  // Kept stretches of the source after cleanup, minus the user's cuts and trim (exact times).
+  const kept = subtractRanges(
+    runsOf(speed)
+      .filter((r) => r.value > 0)
+      .map((r) => ({ start: time(r.start), end: time(r.end), speed: r.value })),
+    removedRanges(project),
+  ).map((p) => ({ sourceStart: p.start, sourceEnd: p.end, speed: p.speed }));
 
   const segments = project.segments?.length
     ? project.segments
@@ -212,6 +216,7 @@ export function buildSyncPlan(
 
     const status = seg.id ? clipStatus(seg, v) : "empty";
     if (seg.deleted) decision.action = "deleted";
+    else if (!own.length && seg.id) decision.action = "cut by you (voice removed)";
     else if (!aiMode) decision.action = seg.id ? "original voice (no retiming)" : "no transcript";
     else if (seg.isRetake) decision.action = own.length ? "retake: fast-forward (screen changes)" : "retake: cut (screen still)";
     else if (status === "empty") decision.action = "no narration, plays at 1x";
@@ -280,15 +285,17 @@ export const pieceLength = (p: TimelinePiece) => (p.sourceEnd - p.sourceStart) /
 export function identityPlan(project: Project): SyncPlan {
   const duration = project.video.duration;
   const segs = project.segments?.length ? project.segments : [{ id: "", start: 0, end: duration }];
-  const pieces = segs.map((s) => ({
-    sourceStart: s.start,
-    sourceEnd: s.end,
-    speed: 1,
-    freezeAfter: 0,
-    outputStart: s.start,
-    segmentId: s.id || null,
-  }));
-  return { states: [], actions: [], pieces, voice: [], decisions: [], sourceDuration: duration, outputDuration: duration };
+  const kept = subtractRanges(
+    segs.map((s) => ({ start: s.start, end: s.end, segmentId: s.id || null })),
+    removedRanges(project),
+  );
+  let cursor = 0;
+  const pieces = kept.map((k) => {
+    const piece = { sourceStart: k.start, sourceEnd: k.end, speed: 1, freezeAfter: 0, outputStart: cursor, segmentId: k.segmentId };
+    cursor += k.end - k.start;
+    return piece;
+  });
+  return { states: [], actions: [], pieces, voice: [], decisions: [], sourceDuration: duration, outputDuration: cursor };
 }
 
 /** Source time → output time. A time inside a cut maps to where the video resumes. */

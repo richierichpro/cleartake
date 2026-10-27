@@ -35,6 +35,17 @@ export interface Project {
   rewrite?: { model: string; at: string; missing: number } | null; // last AI rewrite (Step 4)
   voice?: VoiceSettings; // Step 5; DEFAULT_VOICE when missing
   export?: ExportState; // last export (Step 8)
+  // Step 9: all in source (recording) time. Restorable; the original video is never touched.
+  cuts?: Cut[];
+  trim?: { start: number; end: number }; // keep only [start, end) of the recording
+  splits?: number[]; // split points made with S; they define clickable pieces on the timeline
+}
+
+export interface Cut {
+  id: string;
+  start: number;
+  end: number;
+  segmentId?: string; // set when the cut comes from deleting a paragraph
 }
 
 export interface ExportState {
@@ -82,7 +93,7 @@ export interface Segment {
   text: string; // the script text that gets narrated ("" = no narration)
   aiText?: string; // the AI-polished version (Step 4), kept for "revert to AI version"
   isRetake?: boolean; // AI flagged this paragraph as a mistake/retake; Step 6 cuts or speeds it
-  deleted?: boolean; // removed from the script (restorable); Step 9 turns this into a cut
+  deleted?: boolean; // legacy (Step 5); Step 9 deletes paragraphs by adding a Cut with segmentId
   voice?: VoiceClip; // last generated AI voice clip (Step 5)
   breakReason: "pause" | "length" | "end" | "split"; // why the paragraph ended (debug); "split" = added by hand
   pauseAfter: number; // silence before the next paragraph's first word

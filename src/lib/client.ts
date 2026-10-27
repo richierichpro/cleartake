@@ -87,7 +87,11 @@ export async function uploadThumbnail(id: string, blob: Blob) {
 
 export async function updateProject(
   id: string,
-  patch: { title?: string; voice?: Partial<Pick<VoiceSettings, "mode" | "voiceId" | "voiceName">> },
+  patch: {
+    title?: string;
+    voice?: Partial<Pick<VoiceSettings, "mode" | "voiceId" | "voiceName">>;
+    edit?: { cuts?: Project["cuts"]; trim?: Project["trim"] | null; splits?: number[] };
+  },
 ) {
   const res = await fetch(`/api/projects/${id}`, {
     method: "PATCH",
