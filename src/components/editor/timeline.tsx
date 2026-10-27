@@ -327,13 +327,22 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
               </div>
             )}
 
-            {/* Split points */}
+            {/* Split points: click one to remove it */}
             {edits.splits.filter(inKept).map((t) => (
-              <div
+              <button
                 key={`split${t}`}
-                className="pointer-events-none absolute z-[2] w-[2px] -translate-x-1/2 rounded-full bg-white shadow-[0_0_0_1px_rgba(17,17,19,0.45)]"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => edits.removeSplit(t)}
+                title="Remove split"
+                aria-label="Remove split"
+                className="group/split absolute z-[2] flex w-3 -translate-x-1/2 justify-center"
                 style={{ top: VIDEO_TOP - 3, height: 62, left: xOf(sourceToOutput(plan, t)) }}
-              />
+              >
+                <span className="h-full w-[2px] rounded-full bg-white shadow-[0_0_0_1px_rgba(17,17,19,0.45)] transition-colors group-hover/split:bg-brand" />
+                <span className="absolute -top-2 flex size-3.5 scale-75 items-center justify-center rounded-full bg-foreground text-[9px] leading-none text-white opacity-0 transition-all duration-150 group-hover/split:scale-100 group-hover/split:opacity-100">
+                  ×
+                </span>
+              </button>
             ))}
 
             {/* Selection: click a piece or drag a range on the video track, then Delete */}

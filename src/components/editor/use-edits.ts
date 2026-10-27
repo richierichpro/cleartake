@@ -40,13 +40,23 @@ export function useEdits(project: Project, plan: SyncPlan, onChange: ProjectUpda
   const cutSelection = useCallback(() => {
     if (!selection) return;
     const cut: Cut = { id: newCutId(), start: selection.start, end: selection.end };
-    save({ cuts: [...cuts, cut] });
+    // Splits that bounded the cut piece have done their job; the ✂ marker replaces them.
+    const splits = (project.splits ?? []).filter((t) => Math.abs(t - cut.start) > 0.02 && Math.abs(t - cut.end) > 0.02);
+    save({ cuts: [...cuts, cut], splits });
     setSelection(null);
     toast(`Cut ${(cut.end - cut.start).toFixed(1)}s`, {
       description: "The paragraph's voice still plays, so its remaining video is retimed to fit. Click ✂ on the timeline to restore.",
       action: { label: "Undo", onClick: () => save({ cuts: (project.cuts ?? []).filter((c) => c.id !== cut.id) }) },
     });
-  }, [selection, cuts, save, project.cuts]);
+  }, [selection, cuts, save, project.cuts, project.splits]);
+
+  const removeSplit = useCallback(
+    (t: number) => {
+      save({ splits: (project.splits ?? []).filter((x) => x !== t) });
+      setSelection(null);
+    },
+    [project.splits, save],
+  );
 
   const restoreCut = useCallback(
     (id: string) => {
@@ -68,7 +78,7 @@ export function useEdits(project: Project, plan: SyncPlan, onChange: ProjectUpda
     [project.trim, duration, save],
   );
 
-  return { selection, setSelection, split, cutSelection, restoreCut, setTrim, cuts, splits: project.splits ?? [], trim: project.trim };
+  return { selection, setSelection, split, removeSplit, cutSelection, restoreCut, setTrim, cuts, splits: project.splits ?? [], trim: project.trim };
 }
 
 export type Edits = ReturnType<typeof useEdits>;
