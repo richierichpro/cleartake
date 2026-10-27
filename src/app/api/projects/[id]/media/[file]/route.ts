@@ -46,6 +46,17 @@ function toWebStream(node: fs.ReadStream): ReadableStream {
   });
 }
 
+// The export renderer serves its bundle from another localhost port, so media needs CORS.
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Range",
+  "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+};
+
+export function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS });
+}
+
 // Serves files from a project folder with HTTP Range support so the video can seek.
 export async function GET(req: Request, ctx: RouteContext<"/api/projects/[id]/media/[file]">) {
   const { id, file } = await ctx.params;
@@ -63,6 +74,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/projects/[id]/me
     "Content-Type": TYPES[path.extname(file).toLowerCase()] ?? "application/octet-stream",
     "Accept-Ranges": "bytes",
     "Cache-Control": "no-cache",
+    ...CORS,
   };
 
   const range = req.headers.get("range")?.match(/bytes=(\d*)-(\d*)/);
@@ -70,7 +82,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/projects/[id]/me
     const start = range[1] ? Number(range[1]) : Math.max(0, stat.size - Number(range[2]));
     const end = range[1] && range[2] ? Math.min(Number(range[2]), stat.size - 1) : stat.size - 1;
     if (start >= stat.size || start > end) {
-      return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${stat.size}` } });
+      return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${stat.size}`, ...CORS } });
     }
     return new Response(toWebStream(fs.createReadStream(filePath, { start, end })), {
       status: 206,
