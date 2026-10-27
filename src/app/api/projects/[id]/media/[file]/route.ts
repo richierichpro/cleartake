@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
 import { projectFile } from "@/lib/projects";
 
 const TYPES: Record<string, string> = {
@@ -16,6 +15,36 @@ const TYPES: Record<string, string> = {
   ".wav": "audio/wav",
   ".json": "application/json",
 };
+
+// Node stream → web stream that tolerates the browser cancelling mid-file
+// (video seeking does this constantly; Readable.toWeb throws "Controller is already closed").
+function toWebStream(node: fs.ReadStream): ReadableStream {
+  let closed = false;
+  return new ReadableStream({
+    start(controller) {
+      node.on("data", (chunk) => {
+        if (closed) return;
+        controller.enqueue(chunk);
+        if ((controller.desiredSize ?? 1) <= 0) node.pause();
+      });
+      node.on("end", () => {
+        if (!closed) controller.close();
+        closed = true;
+      });
+      node.on("error", (err) => {
+        if (!closed) controller.error(err);
+        closed = true;
+      });
+    },
+    pull() {
+      node.resume();
+    },
+    cancel() {
+      closed = true;
+      node.destroy();
+    },
+  });
+}
 
 // Serves files from a project folder with HTTP Range support so the video can seek.
 export async function GET(req: Request, ctx: RouteContext<"/api/projects/[id]/media/[file]">) {
@@ -43,8 +72,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/projects/[id]/me
     if (start >= stat.size || start > end) {
       return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${stat.size}` } });
     }
-    const stream = fs.createReadStream(filePath, { start, end });
-    return new Response(Readable.toWeb(stream) as ReadableStream, {
+    return new Response(toWebStream(fs.createReadStream(filePath, { start, end })), {
       status: 206,
       headers: {
         ...headers,
@@ -54,8 +82,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/projects/[id]/me
     });
   }
 
-  const stream = fs.createReadStream(filePath);
-  return new Response(Readable.toWeb(stream) as ReadableStream, {
+  return new Response(toWebStream(fs.createReadStream(filePath)), {
     headers: { ...headers, "Content-Length": String(stat.size) },
   });
 }
