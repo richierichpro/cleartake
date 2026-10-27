@@ -6,7 +6,7 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 1 – App shell + upload
 - [x] Step 2 – Transcription
 - [x] Step 3 – Segments
-- [x] Step 4 – Script rewrite (awaiting "works")
+- [x] Step 4 – Script rewrite
 - [ ] Step 5 – AI voice + script editing
 - [ ] Steps 6–15
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
