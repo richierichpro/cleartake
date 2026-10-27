@@ -8,8 +8,9 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 3 – Segments
 - [x] Step 4 – Script rewrite
 - [x] Step 5 – AI voice + script editing
-- [ ] Step 6 – Cleanup + sync plan
-- [ ] Steps 7–15
+- [x] Step 6 – Cleanup + sync plan (awaiting "works")
+- [ ] Step 7 – Preview (Remotion)
+- [ ] Steps 8–15
 - Open (Step 9): deleting a paragraph added with "+ Add" should merge it back into the previous one instead of becoming a cut.
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
@@ -45,6 +46,11 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
 - Script editing: local state updates on every keystroke; PATCH after 700ms idle or on blur. Server responses never overwrite paragraphs with unsaved typing. Delete sets `deleted: true` (restorable); Step 9 should turn this into a cut. "+ Add" splits the paragraph under the playhead.
 - Media route streams with a cancel-safe web stream; `Readable.toWeb` crashed with "Controller is already closed" when the browser aborted a range request.
 - After adding new route folders, restart `npm run dev` if they 404; Turbopack missed them once.
+- Sync plan (Step 6) is **derived, never stored**: `buildSyncPlan(project, words, motion)` in `lib/sync.ts` (pure, thresholds in `SYNC_CONFIG`). The editor recomputes it on every project change (`use-sync-plan.ts`). Step 7 preview and Step 8 export must call the same function.
+  - Activity: ffmpeg samples 5 fps, 160px-wide grayscale → `frames.gray` (raw, kept for Step 12) + `motion.json` (scores = % pixels changed > 12/255 vs the previous frame). It takes about 0.1s per second of video. It runs in the pipeline after transcription, or automatically the first time the editor opens an older project.
+  - Slots of 0.2s: speaking (within 0.3s of a word), moving (> 0.5%), still. Still gaps ≤ 0.4s between moving slots count as moving (scroll flicker).
+  - Cleanup: silent+still > 1.5s → cut, keeping 0.4s (0.2 each edge); silent+moving > 2s → 4×; trim lead/tail keeping 0.5s; retakes (AI mode only) → cut if < 20% moving, else 4×; deleted paragraphs → cut.
+  - Sync per paragraph: cleaned video longer than the voice → speed the whole paragraph up (max 2×, multiplies cleanup speeds), any rest plays without narration. Voice longer → freeze the stillest frame (lowest max(score in, score out)) for the difference. With no current clip, the voice length is estimated (marked ≈). Original voice mode: cleanup only, no retiming, no retake cuts.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
 
@@ -66,6 +72,7 @@ src/
     api/projects/[id]/segments/split/route.ts        POST {at} → "+ Add" paragraph at the playhead
     api/projects/[id]/voice/[segmentId]/route.ts     POST → generate (or reuse cached) AI clip for one paragraph
     api/voices/route.ts              GET → ElevenLabs voices + credits used
+    api/projects/[id]/activity/route.ts      POST → sample frames, save motion.json + frames.gray
     api/projects/[id]/media/[file]/route.ts GET any project file, with HTTP Range support
   components/
     logo.tsx
@@ -75,14 +82,15 @@ src/
     processing/keyterms-input.tsx    chip input (Enter/comma adds, Backspace removes)
     editor/script-view.tsx           Script tab: editable document, autosave, timestamp gutter (hover → Play; plays AI clip over the muted video), voice status dot (orange = outdated, hollow = none), voice vs video length with amber warning, hover actions (play, regenerate, show original, revert to AI, delete), "+ Add", "Generate N changed", Polish banner
     editor/voice-tab.tsx             Use original voice toggle, voice dropdown (name + gender/accent/style, preview button), model, credits bar
-    editor/debug-drawer.tsx          Debug drawer: segmentation table + Rebuild; rewrite comparison (original vs AI, word-count change, retake flag) + Run again
+    editor/debug-drawer.tsx          Debug drawer: Cleanup & sync (duration before → after, per-paragraph decisions, cleanup actions, Re-analyze); segmentation table + Rebuild; rewrite comparison + Run again
+    editor/use-sync-plan.ts          loads motion + transcript, auto-analyzes old projects, memoizes buildSyncPlan
     editor/editor.tsx                loads project, layout, Space shortcut, skeleton, not-found
     editor/use-playback.ts           playback state (currentTime, seek, toggle, playRange, volume) used by preview, control bar and timeline; Step 7 swaps in Remotion Player behind it
     editor/top-bar.tsx               back, editable title (saves on blur/Enter, Esc reverts), Export
     editor/left-panel.tsx            collapsible panel, 5 tabs with animated underline, empty states
     editor/preview.tsx               dot-grid canvas, aspect-fit framed <video>, play overlay, codec error state
     editor/control-bar.tsx           captions/cut (inactive placeholders), play, time, volume, timeline zoom
-    editor/timeline.tsx              ruler (adaptive ticks), filmstrip split at paragraph boundaries (deleted ones faded), voice track (real AI clip length, orange dot if outdated, dashed if no voice yet, amber if the clip overruns its paragraph), hover guide, draggable playhead, auto-follow
+    editor/timeline.tsx              debug strips while the drawer is open (activity: speaking/moving/still; plan: cut/4×/freeze ticks); ruler (adaptive ticks), filmstrip split at paragraph boundaries (deleted ones faded), voice track (real AI clip length, orange dot if outdated, dashed if no voice yet, amber if the clip overruns its paragraph), hover guide, draggable playhead, auto-follow
     ui/                              shadcn: alert-dialog, button, input, skeleton, slider, sonner, tooltip
   lib/
     types.ts                         Project types
@@ -92,6 +100,8 @@ src/
     rewrite.ts                       rewriteScript(): the prompt + schema; applies aiText / isRetake
     elevenlabs.ts                    listVoices, credits, synthesize (with-timestamps)
     voice.ts                         generateSegmentVoice(): cache by hash, store clip on the segment
+    motion.ts                        analyzeActivity(): ffmpeg frame sampling + motion scores
+    sync.ts                          (shared, pure) SYNC_CONFIG, labelSlots, cleanup, buildSyncPlan → pieces / voice placements / decisions
     voice-settings.ts                (shared) DEFAULT_VOICE (Matilda, flash v2.5), voiceOf, clipStatus, estimateSeconds, creditCost
     segments.ts                      buildSegments(words, duration, SEGMENT_CONFIG): pure, shared by server and debug view
     assemblyai.ts                    upload / submit / poll
@@ -105,6 +115,8 @@ data/projects/{id}/                  gitignored
   audio.mp3                          extracted voiceover (Step 2)
   transcript.json                    (Step 2)
   voice-{hash}.mp3 / .json           AI clips + ElevenLabs character alignment (Step 5)
+  motion.json                        { fps: 5, width: 160, height, frames, scores[] } (Step 6)
+  frames.gray                        raw 8-bit gray frames, frames × width × height (Step 6; Step 12 reuses)
 ```
 
 ## JSON formats
@@ -165,4 +177,12 @@ Status flow: `uploaded` (waiting for key terms) → `transcribing` → (`writing
   "text": "So today I will show you…",
   "words": [{ "text": "So", "start": 0.4, "end": 0.56, "confidence": 0.97 }]
 }
+```
+
+### Sync plan output (derived, not stored)
+```ts
+pieces: { sourceStart, sourceEnd, speed, freezeAfter, outputStart, segmentId }[]  // output length = (end-start)/speed + freezeAfter
+voice:  { segmentId, file, outputStart, duration }[]                             // only paragraphs with a current clip
+decisions: { segmentId, index, original, cleaned, voice, voiceEstimated, output, action }[]
+actions:   { kind: "cut" | "fast", start, end, reason }[]                         // cleanup, in source time
 ```

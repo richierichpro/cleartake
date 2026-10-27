@@ -18,6 +18,7 @@ import { VoiceTab } from "./voice-tab";
 import { Timeline } from "./timeline";
 import { TopBar } from "./top-bar";
 import { usePlayback } from "./use-playback";
+import { useSyncPlan } from "./use-sync-plan";
 
 export function Editor({ id }: { id: string }) {
   const [project, setProject] = useState<Project | null | "missing">(null);
@@ -46,6 +47,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
   const playback = usePlayback(project.video.duration);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
+  const sync = useSyncPlan(project);
   const { toggle } = playback;
 
   // Projects transcribed before segments existed: build them once.
@@ -91,10 +93,17 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
             thumbnailUrl={project.thumbnail ? mediaUrl(project.id, project.thumbnail) : null}
             segments={project.segments}
             voice={voiceOf(project)}
+            plan={debugOpen ? sync.plan : null}
           />
           <AnimatePresence>
             {debugOpen && (
-              <DebugDrawer project={project} playback={playback} onChange={onChange} onClose={() => setDebugOpen(false)} />
+              <DebugDrawer
+                project={project}
+                playback={playback}
+                sync={sync}
+                onChange={onChange}
+                onClose={() => setDebugOpen(false)}
+              />
             )}
           </AnimatePresence>
         </main>

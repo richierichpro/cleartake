@@ -5,6 +5,7 @@ import { Film, Mic } from "lucide-react";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { clipStatus, estimateSeconds } from "@/lib/voice-settings";
+import { SYNC_CONFIG, type SyncPlan } from "@/lib/sync";
 import type { Segment, VoiceSettings } from "@/lib/types";
 import type { Playback } from "./use-playback";
 
@@ -12,11 +13,25 @@ const PAD = 16; // horizontal breathing room so 0:00 and the end aren't glued to
 const RULER_H = 28;
 const VIDEO_TOP = RULER_H + 12;
 const VOICE_TOP = VIDEO_TOP + 56 + 8;
+const STRIP_TOP = VOICE_TOP + 32 + 6; // debug strips: activity, then plan
+
+export const STATE_COLOR = { speaking: "#FF8A6B", moving: "#7C93F6", still: "#E1E1E6" } as const;
+export const ACTION_COLOR = { cut: "#3A3A40", fast: "#7C93F6", freeze: "#FF5C35" } as const;
 
 // Ruler spacing: pick the smallest major step that keeps labels ~72px apart.
 const STEPS: [major: number, minorDivisions: number][] = [
   [1, 4], [2, 4], [5, 5], [10, 5], [15, 3], [30, 6], [60, 6], [120, 4], [300, 5], [600, 5],
 ];
+
+const runs = <T,>(arr: T[]) => {
+  const out: { value: T; start: number; end: number }[] = [];
+  arr.forEach((v, i) => {
+    const last = out[out.length - 1];
+    if (last && last.value === v) last.end = i + 1;
+    else out.push({ value: v, start: i, end: i + 1 });
+  });
+  return out;
+};
 
 interface Props {
   playback: Playback;
@@ -24,9 +39,10 @@ interface Props {
   thumbnailUrl: string | null;
   segments: Segment[] | undefined;
   voice: VoiceSettings;
+  plan: SyncPlan | null; // shown as strips while the debug drawer is open
 }
 
-export function Timeline({ playback, zoom, thumbnailUrl, segments, voice }: Props) {
+export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan }: Props) {
   const { currentTime, playing, seek } = playback;
   const duration = playback.duration || 1;
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -68,7 +84,7 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice }: Prop
   }, [zoom]);
 
   return (
-    <div className="h-[164px] shrink-0 border-t bg-white">
+    <div className={cn("shrink-0 border-t bg-white transition-[height]", plan ? "h-[176px]" : "h-[164px]")}>
       <div
         ref={scrollerRef}
         className="scroll-thin relative h-full overflow-x-auto overflow-y-hidden select-none"
@@ -192,6 +208,41 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice }: Prop
               >
                 Your voice will appear here after transcription
               </div>
+            )}
+
+            {/* Debug strips: what's on screen (speaking / moving / still) and what the plan does with it */}
+            {plan && (
+              <>
+                {runs(plan.states).map((r) => (
+                  <div
+                    key={`s${r.start}`}
+                    className="absolute h-[5px] first:rounded-l-full"
+                    style={{
+                      top: STRIP_TOP,
+                      left: xOf(r.start / SYNC_CONFIG.fps),
+                      width: ((r.end - r.start) / SYNC_CONFIG.fps) * pps,
+                      background: STATE_COLOR[r.value],
+                    }}
+                  />
+                ))}
+                <div className="absolute h-[5px] rounded-full bg-[#F3F3F5]" style={{ top: STRIP_TOP + 8, left: xOf(0), width: duration * pps }} />
+                {plan.actions.map((a) => (
+                  <div
+                    key={`a${a.start}`}
+                    className="absolute h-[5px]"
+                    style={{ top: STRIP_TOP + 8, left: xOf(a.start), width: (a.end - a.start) * pps, background: ACTION_COLOR[a.kind] }}
+                  />
+                ))}
+                {plan.pieces
+                  .filter((p) => p.freezeAfter > 0)
+                  .map((p) => (
+                    <div
+                      key={`f${p.sourceEnd}`}
+                      className="absolute h-[11px] w-[3px] rounded-full"
+                      style={{ top: STRIP_TOP + 5, left: xOf(p.sourceEnd) - 1.5, background: ACTION_COLOR.freeze }}
+                    />
+                  ))}
+              </>
             )}
 
             {/* Hover guide */}

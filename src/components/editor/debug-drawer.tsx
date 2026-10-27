@@ -8,20 +8,25 @@ import { Button } from "@/components/ui/button";
 import { rebuildSegments, rewriteScript } from "@/lib/client";
 import { formatRelative, formatTime } from "@/lib/format";
 import { SEGMENT_CONFIG } from "@/lib/segments";
+import { SYNC_CONFIG, type CleanupAction } from "@/lib/sync";
+import { ACTION_COLOR, STATE_COLOR } from "./timeline";
+import type { useSyncPlan } from "./use-sync-plan";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 import type { Playback } from "./use-playback";
 
 // Debug views for automatic decisions, kept out of the main UI.
-// Covers only the preview so the control bar and timeline (212px) stay usable.
+// Covers only the preview so the control bar and timeline (224px while debugging) stay usable.
 export function DebugDrawer({
   project,
   playback,
+  sync,
   onChange,
   onClose,
 }: {
   project: Project;
   playback: Playback;
+  sync: ReturnType<typeof useSyncPlan>;
   onChange: (p: Project) => void;
   onClose: () => void;
 }) {
@@ -31,7 +36,7 @@ export function DebugDrawer({
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: "100%", opacity: 0.6 }}
       transition={{ type: "spring", stiffness: 420, damping: 40 }}
-      className="absolute top-0 right-0 bottom-[212px] z-30 flex w-[440px] max-w-full flex-col border-l bg-white shadow-[-12px_0_40px_-20px_rgba(17,17,19,0.25)]"
+      className="absolute top-0 right-0 bottom-[224px] z-30 flex w-[500px] max-w-full flex-col border-l bg-white shadow-[-12px_0_40px_-20px_rgba(17,17,19,0.25)]"
     >
       <div className="flex h-11 shrink-0 items-center gap-2 border-b px-4">
         <Bug className="size-4 text-muted-foreground" />
@@ -41,6 +46,8 @@ export function DebugDrawer({
         </Button>
       </div>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+        <SyncDebug sync={sync} playback={playback} />
+        <div className="mx-4 border-t" />
         <SegmentsDebug project={project} playback={playback} onChange={onChange} />
         <div className="mx-4 border-t" />
         <RewriteDebug project={project} onChange={onChange} />
@@ -203,6 +210,141 @@ function RewriteDebug({ project, onChange }: { project: Project; onChange: (p: P
             </div>
           );
         })}
+    </section>
+  );
+}
+
+const REASON: Record<CleanupAction["reason"], string> = {
+  still: "silent, screen still",
+  moving: "silent, screen moving",
+  lead: "before first activity",
+  tail: "after last activity",
+  retake: "retake",
+  deleted: "deleted paragraph",
+};
+
+function Swatch({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1">
+      <span className="h-2 w-3 rounded-sm" style={{ background: color }} />
+      {label}
+    </span>
+  );
+}
+
+function SyncDebug({ sync, playback }: { sync: ReturnType<typeof useSyncPlan>; playback: Playback }) {
+  const { plan, analyzing, analyze } = sync;
+  const c = SYNC_CONFIG;
+  const chips = [
+    `${c.fps} fps`,
+    `moving > ${c.movingThreshold}%`,
+    `still > ${c.stillCutAfter}s → cut (keep ${c.stillKeep}s)`,
+    `moving > ${c.movingFastAfter}s → ${c.fastSpeed}×`,
+    `edges keep ${c.edgeKeep}s`,
+    `max sync ${c.maxSyncSpeed}×`,
+  ];
+
+  return (
+    <section className="p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-[13px] font-medium">Cleanup &amp; sync</h3>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={analyze} disabled={analyzing}>
+          {analyzing ? <Loader2 className="animate-spin" /> : <RotateCw />} Re-analyze screen
+        </Button>
+      </div>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {chips.map((label) => (
+          <span key={label} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {analyzing && !plan ? (
+        <div className="mt-4 flex items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> Analyzing screen activity… about 0.1s per second of video.
+        </div>
+      ) : !plan ? (
+        <p className="mt-4 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+          No activity data yet. Click Re-analyze screen.
+        </p>
+      ) : (
+        <>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-lg font-semibold tabular-nums">
+              {formatTime(plan.sourceDuration)} → {formatTime(plan.outputDuration)}
+            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {plan.sourceDuration.toFixed(1)}s → {plan.outputDuration.toFixed(1)}s (
+              {Math.round(((plan.outputDuration - plan.sourceDuration) / plan.sourceDuration) * 100)}%)
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground">Strip 1:</span>
+            <Swatch color={STATE_COLOR.speaking} label="speaking" />
+            <Swatch color={STATE_COLOR.moving} label="moving" />
+            <Swatch color={STATE_COLOR.still} label="still" />
+            <span className="ml-2 font-medium text-foreground">Strip 2:</span>
+            <Swatch color={ACTION_COLOR.cut} label="cut" />
+            <Swatch color={ACTION_COLOR.fast} label={`${c.fastSpeed}×`} />
+            <Swatch color={ACTION_COLOR.freeze} label="freeze" />
+          </div>
+
+          <table className="mt-3 w-full text-xs tabular-nums">
+            <thead>
+              <tr className="border-b text-left text-[11px] text-muted-foreground">
+                <th className="py-1.5 pr-2 font-medium">#</th>
+                <th className="py-1.5 pr-2 font-medium">Video</th>
+                <th className="py-1.5 pr-2 font-medium">Cleaned</th>
+                <th className="py-1.5 pr-2 font-medium">Voice</th>
+                <th className="py-1.5 pr-2 font-medium">Output</th>
+                <th className="py-1.5 font-medium">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plan.decisions.map((d) => (
+                <tr key={d.segmentId || "all"} className="border-b border-border/60 align-top">
+                  <td className="py-1.5 pr-2 text-muted-foreground">{d.index + 1}</td>
+                  <td className="py-1.5 pr-2">{d.original.toFixed(1)}s</td>
+                  <td className="py-1.5 pr-2">{d.cleaned.toFixed(1)}s</td>
+                  <td className="py-1.5 pr-2">
+                    {d.voice === null ? "—" : `${d.voiceEstimated ? "≈" : ""}${d.voice.toFixed(1)}s`}
+                  </td>
+                  <td className="py-1.5 pr-2 font-medium">{d.output.toFixed(1)}s</td>
+                  <td className={cn("py-1.5", d.action.includes("without narration") && "text-amber-600")}>{d.action}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {plan.decisions.some((d) => d.voiceEstimated) && (
+            <p className="mt-1.5 text-[11px] text-muted-foreground">≈ = no current voice clip yet, length estimated from the text.</p>
+          )}
+
+          <p className="mt-4 mb-1.5 text-[11px] font-medium text-muted-foreground">Cleanup ({plan.actions.length})</p>
+          {plan.actions.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nothing to clean up.</p>
+          ) : (
+            <ul className="space-y-0.5">
+              {plan.actions.map((a) => (
+                <li
+                  key={`${a.start}-${a.kind}`}
+                  onClick={() => playback.seek(a.start)}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-[#FAFAFB]"
+                >
+                  <span className="h-2 w-3 shrink-0 rounded-sm" style={{ background: ACTION_COLOR[a.kind] }} />
+                  <span className="w-14 font-medium">{a.kind === "cut" ? "Cut" : `${c.fastSpeed}× speed`}</span>
+                  <span className="font-mono text-[11px]">
+                    {a.start.toFixed(1)}–{a.end.toFixed(1)}s
+                  </span>
+                  <span className="text-muted-foreground">
+                    {(a.end - a.start).toFixed(1)}s · {REASON[a.reason]}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </section>
   );
 }
