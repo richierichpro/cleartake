@@ -269,3 +269,56 @@ export function buildSyncPlan(
 
   return { states, actions, pieces, voice, decisions, sourceDuration: duration, outputDuration: cursor };
 }
+
+// ---- Output ↔ source time ------------------------------------------------------
+// The editor's timeline, player and paragraph timestamps use output (edited video) time;
+// segments, transcript and cuts are stored in source (recording) time.
+
+export const pieceLength = (p: TimelinePiece) => (p.sourceEnd - p.sourceStart) / p.speed + p.freezeAfter;
+
+/** Until motion is analyzed: the recording as-is, split at paragraph boundaries, no voice. */
+export function identityPlan(project: Project): SyncPlan {
+  const duration = project.video.duration;
+  const segs = project.segments?.length ? project.segments : [{ id: "", start: 0, end: duration }];
+  const pieces = segs.map((s) => ({
+    sourceStart: s.start,
+    sourceEnd: s.end,
+    speed: 1,
+    freezeAfter: 0,
+    outputStart: s.start,
+    segmentId: s.id || null,
+  }));
+  return { states: [], actions: [], pieces, voice: [], decisions: [], sourceDuration: duration, outputDuration: duration };
+}
+
+/** Source time → output time. A time inside a cut maps to where the video resumes. */
+export function sourceToOutput(plan: SyncPlan, t: number) {
+  for (const p of plan.pieces) {
+    if (t < p.sourceStart) return p.outputStart;
+    if (t < p.sourceEnd) return p.outputStart + (t - p.sourceStart) / p.speed;
+  }
+  return plan.outputDuration;
+}
+
+/** Output time → source time. During a freeze, the frozen frame's time. */
+export function outputToSource(plan: SyncPlan, t: number) {
+  for (const p of plan.pieces) {
+    const moving = (p.sourceEnd - p.sourceStart) / p.speed;
+    if (t < p.outputStart + moving) return p.sourceStart + Math.max(0, t - p.outputStart) * p.speed;
+    if (t < p.outputStart + moving + p.freezeAfter) return p.sourceEnd;
+  }
+  return plan.pieces[plan.pieces.length - 1]?.sourceEnd ?? 0;
+}
+
+/** Where each paragraph sits in the output. Paragraphs that were cut entirely are missing. */
+export function segmentRanges(plan: SyncPlan) {
+  const ranges = new Map<string, { start: number; end: number }>();
+  for (const p of plan.pieces) {
+    if (!p.segmentId) continue;
+    const r = ranges.get(p.segmentId);
+    const end = p.outputStart + pieceLength(p);
+    if (r) r.end = end;
+    else ranges.set(p.segmentId, { start: p.outputStart, end });
+  }
+  return ranges;
+}
