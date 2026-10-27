@@ -1,6 +1,7 @@
 "use client";
 
-import type { Project } from "./types";
+import type { Project, VoiceSettings } from "./types";
+import type { VoiceOption } from "./elevenlabs";
 
 export const mediaUrl = (id: string, file: string) => `/api/projects/${id}/media/${file}`;
 
@@ -83,7 +84,10 @@ export async function uploadThumbnail(id: string, blob: Blob) {
   await fetch(`/api/projects/${id}/thumbnail`, { method: "POST", body: blob });
 }
 
-export async function updateProject(id: string, patch: Partial<Pick<Project, "title">>) {
+export async function updateProject(
+  id: string,
+  patch: { title?: string; voice?: Partial<Pick<VoiceSettings, "mode" | "voiceId" | "voiceName">> },
+) {
   const res = await fetch(`/api/projects/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -122,3 +126,31 @@ export async function deleteProject(id: string) {
   const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not delete project");
 }
+
+async function json<T>(res: Response): Promise<T> {
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body as T;
+}
+
+export const updateSegment = (id: string, segmentId: string, patch: { text?: string; deleted?: boolean }) =>
+  fetch(`/api/projects/${id}/segments/${segmentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  }).then((r) => json<Project>(r));
+
+export const splitSegment = (id: string, at: number) =>
+  fetch(`/api/projects/${id}/segments/split`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ at }),
+  }).then((r) => json<{ project: Project; id: string }>(r));
+
+export const generateVoice = (id: string, segmentId: string) =>
+  fetch(`/api/projects/${id}/voice/${segmentId}`, { method: "POST" }).then((r) => json<Project>(r));
+
+export const fetchVoices = () =>
+  fetch("/api/voices").then((r) =>
+    json<{ voices: VoiceOption[]; credits: { used: number; limit: number } | null }>(r),
+  );

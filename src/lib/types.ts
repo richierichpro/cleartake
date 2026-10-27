@@ -33,6 +33,23 @@ export interface Project {
   error?: { step: ProjectStatus; message: string } | null;
   segments?: Segment[]; // built from the transcript (Step 3); the script is edited here
   rewrite?: { model: string; at: string; missing: number } | null; // last AI rewrite (Step 4)
+  voice?: VoiceSettings; // Step 5; DEFAULT_VOICE when missing
+}
+
+export interface VoiceSettings {
+  mode: "ai" | "original"; // "original" keeps the recorded narration and ignores AI clips
+  voiceId: string; // ElevenLabs voice
+  voiceName: string;
+  model: string; // ElevenLabs model id
+}
+
+// A generated ElevenLabs clip. Character timestamps live in voice-{hash}.json.
+export interface VoiceClip {
+  file: string; // voice-{hash}.mp3 in the project folder
+  text: string; // the exact text it was generated from
+  voiceId: string;
+  model: string;
+  duration: number; // seconds
 }
 
 // A paragraph of the script. Segments tile the whole video in source time:
@@ -49,7 +66,9 @@ export interface Segment {
   text: string; // the script text that gets narrated ("" = no narration)
   aiText?: string; // the AI-polished version (Step 4), kept for "revert to AI version"
   isRetake?: boolean; // AI flagged this paragraph as a mistake/retake; Step 6 cuts or speeds it
-  breakReason: "pause" | "length" | "end"; // why the paragraph ended (debug)
+  deleted?: boolean; // removed from the script (restorable); Step 9 turns this into a cut
+  voice?: VoiceClip; // last generated AI voice clip (Step 5)
+  breakReason: "pause" | "length" | "end" | "split"; // why the paragraph ended (debug); "split" = added by hand
   pauseAfter: number; // silence before the next paragraph's first word
 }
 

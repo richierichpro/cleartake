@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import { mutateProject, projectDir, readProject } from "@/lib/projects";
 import { isRunning } from "@/lib/pipeline";
+import { voiceOf } from "@/lib/voice-settings";
+import type { VoiceSettings } from "@/lib/types";
 
 const ACTIVE = ["transcribing", "writing", "voicing"];
 
@@ -19,14 +21,22 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]">
   return Response.json(project);
 }
 
-// Only the title is editable for now; later steps add their own fields.
+// Editable project settings: title, voice.
 export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]">) {
   const { id } = await ctx.params;
   if (!(await readProject(id))) return Response.json({ error: "Project not found" }, { status: 404 });
 
-  const body = (await req.json()) as { title?: string };
+  const body = (await req.json()) as { title?: string; voice?: Partial<VoiceSettings> };
   const project = await mutateProject(id, (p) => {
     if (typeof body.title === "string" && body.title.trim()) p.title = body.title.trim().slice(0, 120);
+    if (body.voice) {
+      const { mode, voiceId, voiceName } = body.voice;
+      p.voice = {
+        ...voiceOf(p),
+        ...(mode === "ai" || mode === "original" ? { mode } : {}),
+        ...(typeof voiceId === "string" && typeof voiceName === "string" ? { voiceId, voiceName } : {}),
+      };
+    }
   });
   return Response.json(project);
 }
