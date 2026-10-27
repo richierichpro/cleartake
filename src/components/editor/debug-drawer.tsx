@@ -400,7 +400,9 @@ function ZoomDebug({ zoom, plan, playback }: { zoom: ZoomDetectionState; plan: S
         <>
           <label className="mt-3 flex cursor-pointer items-center justify-between rounded-lg bg-[#FAFAFB] px-3 py-2 text-xs">
             <span>
-              <span className="font-medium">{detection.candidates.length} suggested zooms</span>
+              <span className="font-medium">
+                {detection.candidates.length} suggested zoom{detection.candidates.length === 1 ? "" : "s"}
+              </span>
               <span className="text-muted-foreground"> · outlined on the preview while they happen</span>
             </span>
             <Switch size="sm" checked={zoom.showBoxes} onCheckedChange={zoom.setShowBoxes} />
