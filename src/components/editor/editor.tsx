@@ -75,7 +75,9 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
-      <TopBar project={project} onChange={onChange} debugOpen={debugOpen} onToggleDebug={() => setDebugOpen((o) => !o)} />
+      <TopBar project={project} onChange={onChange} debugOpen={debugOpen} onToggleDebug={() => setDebugOpen((o) => !o)}
+        duration={plan.outputDuration}
+      />
       <div className="flex min-h-0 flex-1">
         <LeftPanel
           content={{

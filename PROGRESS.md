@@ -10,8 +10,9 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 5 – AI voice + script editing
 - [x] Step 6 – Cleanup + sync plan
 - [x] Step 7 – Preview (Remotion)
-- [ ] Step 8 – Export + download
-- [ ] Steps 9–15
+- [x] Step 8 – Export + download (awaiting "works")
+- [ ] Step 9 – Trim and cut
+- [ ] Steps 10–15
 - Open (Step 9): deleting a paragraph added with "+ Add" should merge it back into the previous one instead of becoming a cut.
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
@@ -55,6 +56,9 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
 - Preview (Step 7): Remotion 4.0.539 (`remotion`, `@remotion/player`, `@remotion/media`, all the same version). `src/remotion/demo-video.tsx` is the one composition for preview and export. It only renders `inputProps` built from the sync plan: each piece is a `<Sequence>` + `<Video trimBefore playbackRate>`, freezes are `<Freeze frame={0}>` on the piece's last frame, and voice clips are `<Audio>` in `<Sequence>`s. The original audio is muted in AI mode, and pieces faster than 2× are always muted. 30 fps; size is the recording's aspect at 1080p.
 - **The editor is in output (edited video) time**: player, control bar, timeline ruler and tracks, and Script paragraph timestamps. Segments/cuts stay stored in source time; convert with `sourceToOutput` / `outputToSource` / `segmentRanges` (lib/sync.ts). Until motion is analyzed, `identityPlan` plays the recording as-is.
 - Player: `controls={false}`, our control bar drives it via PlayerRef (`seekTo`, `play`, `pause`, `toggle`, `setVolume`, `mute`) and the `frameupdate` / `play` / `pause` / `ended` events (`use-playback.ts`). `moveToBeginningWhenEnded={false}`. Remotion prints a license note in the console (free for individuals / companies ≤ 3 people); `acknowledgeRemotionLicense` is left unset.
+- Export (Step 8): POST /export builds the same plan → `export-props.json` (absolute media URLs on the request origin) → spawns `node scripts/render.mjs` (separate process: Remotion's bundler can't run inside Next). The script bundles `src/remotion/index.ts` into `.remotion-bundle/` (rebuilt only when src/remotion or src/lib change; `@` alias added via webpackOverride), downloads Chrome Headless Shell on the first export, then `selectComposition` + `renderMedia` (h264). Progress lines `@@{json}` → `project.export`, throttled to every 2%. The previous export file is deleted on success. Download sets `Content-Disposition: {title}.mp4`.
+  - Speed: about 90s for a 19s video (2880×1800 source → 1728×1080) using all cores. Rendering makes the laptop fan spin.
+  - The renderer serves its bundle on localhost:3001, so the media route sends CORS headers (+ OPTIONS). Without them, @remotion/media fell back to OffthreadVideo.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
 
@@ -76,6 +80,8 @@ src/
     api/projects/[id]/segments/split/route.ts        POST {at} → "+ Add" paragraph at the playhead
     api/projects/[id]/voice/[segmentId]/route.ts     POST → generate (or reuse cached) AI clip for one paragraph
     api/voices/route.ts              GET → ElevenLabs voices + credits used
+    api/projects/[id]/export/route.ts        GET export state (marks interrupted renders) · POST start export
+    api/projects/[id]/export/download/route.ts  GET latest export as "{title}.mp4"
     api/projects/[id]/activity/route.ts      POST → sample frames, save motion.json + frames.gray
     api/projects/[id]/media/[file]/route.ts GET any project file, with HTTP Range support
   components/
@@ -90,7 +96,8 @@ src/
     editor/use-sync-plan.ts          loads motion + transcript, auto-analyzes old projects, memoizes buildSyncPlan
     editor/editor.tsx                loads project, layout, Space shortcut, skeleton, not-found
     editor/use-playback.ts           Remotion Player-backed playback (output time): currentTime, seek, toggle, playRange, volume/mute, attachPlayer
-    editor/top-bar.tsx               back, editable title (saves on blur/Enter, Esc reverts), Export
+    editor/top-bar.tsx               back, editable title (saves on blur/Enter, Esc reverts), Debug, Export
+    editor/export-button.tsx         Export button (shows % while rendering) + popover: idle / rendering (stage + bar) / ready (Download, Export again) / error; silent-paragraph warning; toast when done
     editor/left-panel.tsx            collapsible panel, 5 tabs with animated underline, empty states
     editor/preview.tsx               dot-grid canvas, aspect-fit framed Remotion <Player> of DemoVideo, play overlay, "N paragraphs will play silently" pill, codec error fallback
     editor/control-bar.tsx           captions/cut (inactive placeholders), play, time, volume, timeline zoom
@@ -106,6 +113,7 @@ src/
     voice.ts                         generateSegmentVoice(): cache by hash, store clip on the segment
     motion.ts                        analyzeActivity(): ffmpeg frame sampling + motion scores
     sync.ts                          (shared, pure) SYNC_CONFIG, labelSlots, cleanup, buildSyncPlan → pieces / voice placements / decisions
+    export.ts                        startExport(): props from the sync plan, spawn render, track progress
     voice-settings.ts                (shared) DEFAULT_VOICE (Matilda, flash v2.5), voiceOf, clipStatus, estimateSeconds, creditCost
     segments.ts                      buildSegments(words, duration, SEGMENT_CONFIG): pure, shared by server and debug view
     assemblyai.ts                    upload / submit / poll
@@ -113,7 +121,11 @@ src/
     client.ts                        browser helpers (mediaUrl, readVideoInfo, uploadVideo, updateProject)
     format.ts                        formatTime, formatRelative, titleFromFileName
   remotion/
-    demo-video.tsx                   DemoVideo composition (preview + export), FPS, compositionSize
+    demo-video.tsx                   DemoVideo composition (preview + export)
+    constants.ts                     FPS, compositionSize (no React; safe on the server)
+    root.tsx / index.ts              Composition "DemoVideo" with calculateMetadata from props; registerRoot (render bundle entry)
+scripts/
+  render.mjs                         export renderer (child process), reports "@@{json}" lines
 data/projects/{id}/                  gitignored
   project.json
   original.{mp4|mov|webm|…}          never modified
@@ -123,6 +135,8 @@ data/projects/{id}/                  gitignored
   voice-{hash}.mp3 / .json           AI clips + ElevenLabs character alignment (Step 5)
   motion.json                        { fps: 5, width: 160, height, frames, scores[] } (Step 6)
   frames.gray                        raw 8-bit gray frames, frames × width × height (Step 6; Step 12 reuses)
+  export-props.json                  inputProps of the last export (Step 8)
+  export-{timestamp}.mp4             latest export (Step 8)
 ```
 
 ## JSON formats
@@ -169,6 +183,8 @@ data/projects/{id}/                  gitignored
 }
 ```
 Also on project.json: `"voice": { "mode": "ai" | "original", "voiceId", "voiceName", "model" }` (Step 5; defaults to Matilda + eleven_flash_v2_5). A clip is **outdated** when its text, voiceId or model differs from the current values.
+
+`"export": { "status": "rendering" | "done" | "error", "stage", "progress": 0–1, "startedAt", "finishedAt", "file", "size", "duration", "error" }` (Step 8).
 
 And `"rewrite": { "model": "gemma-4-31b", "at": "…", "missing": 0 }`, set after an AI rewrite. `missing` counts paragraphs the model skipped; those keep their original text.
 

@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowDownToLine, ArrowLeft, Bug, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Bug, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LogoMark } from "@/components/logo";
+import { ExportButton } from "./export-button";
 import { updateProject } from "@/lib/client";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
@@ -16,9 +17,10 @@ interface Props {
   onChange: (p: Project) => void;
   debugOpen: boolean;
   onToggleDebug: () => void;
+  duration: number; // edited video length
 }
 
-export function TopBar({ project, onChange, debugOpen, onToggleDebug }: Props) {
+export function TopBar({ project, onChange, debugOpen, onToggleDebug, duration }: Props) {
   const [title, setTitle] = useState(project.title);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
@@ -89,14 +91,7 @@ export function TopBar({ project, onChange, debugOpen, onToggleDebug }: Props) {
           </TooltipTrigger>
           <TooltipContent side="bottom">Debug</TooltipContent>
         </Tooltip>
-        <Button
-          size="lg"
-          className="gap-2 rounded-lg px-4"
-          onClick={() => toast("Export isn't available yet", { description: "It arrives once preview rendering is in place." })}
-        >
-          <ArrowDownToLine />
-          Export
-        </Button>
+        <ExportButton project={project} duration={duration} />
       </div>
     </header>
   );
