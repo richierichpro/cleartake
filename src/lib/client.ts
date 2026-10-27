@@ -1,6 +1,6 @@
 "use client";
 
-import type { Project, Transcript } from "./types";
+import type { Project } from "./types";
 
 export const mediaUrl = (id: string, file: string) => `/api/projects/${id}/media/${file}`;
 
@@ -104,9 +104,11 @@ export async function startProcessing(id: string, keyterms: string[]) {
   return body as Project;
 }
 
-export async function fetchTranscript(id: string): Promise<Transcript | null> {
-  const res = await fetch(mediaUrl(id, "transcript.json"), { cache: "no-store" });
-  return res.ok ? res.json() : null;
+export async function rebuildSegments(id: string) {
+  const res = await fetch(`/api/projects/${id}/segments`, { method: "POST" });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? "Could not build segments");
+  return body as Project;
 }
 
 export async function deleteProject(id: string) {

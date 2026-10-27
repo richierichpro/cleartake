@@ -31,6 +31,23 @@ export interface Project {
   statusDetail?: string; // live message for the current processing step
   stepStartedAt?: string; // ISO, when the current status began
   error?: { step: ProjectStatus; message: string } | null;
+  segments?: Segment[]; // built from the transcript (Step 3); the script is edited here
+}
+
+// A paragraph of the script. Segments tile the whole video in source time:
+// segment[i].end === segment[i + 1].start, first starts at 0, last ends at the video's end.
+export interface Segment {
+  id: string;
+  start: number; // video range this paragraph owns (seconds, source time)
+  end: number;
+  speechStart: number; // first/last spoken word inside that range
+  speechEnd: number;
+  wordStart: number; // transcript.words indices [wordStart, wordEnd)
+  wordEnd: number;
+  originalText: string; // what was actually said
+  text: string; // the script text (rewrites and edits land here in later steps)
+  breakReason: "pause" | "length" | "end"; // why the paragraph ended (debug)
+  pauseAfter: number; // silence before the next paragraph's first word
 }
 
 // transcript.json: words in seconds (AssemblyAI returns milliseconds).

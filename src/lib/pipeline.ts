@@ -1,6 +1,7 @@
 import { extractAudio } from "./ffmpeg";
 import { uploadAudio, submitTranscript, waitForTranscript } from "./assemblyai";
 import { mutateProject, projectFile, readProject, writeJson } from "./projects";
+import { buildSegments } from "./segments";
 import type { ProjectStatus } from "./types";
 
 // Processing runs in the background inside the Next server process.
@@ -42,6 +43,9 @@ async function runPipeline(id: string) {
       setStatus(id, step, s === "queued" ? "Queued for transcription…" : "Listening to your voiceover…"),
     );
     await writeJson(id, "transcript.json", transcript);
+    await mutateProject(id, (p) => {
+      p.segments = buildSegments(transcript.words, p.video.duration);
+    });
 
     // Script rewrite and voice generation plug in here in later steps.
     step = "ready";
