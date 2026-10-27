@@ -9,8 +9,9 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 4 – Script rewrite
 - [x] Step 5 – AI voice + script editing
 - [x] Step 6 – Cleanup + sync plan
-- [ ] Step 7 – Preview (Remotion)
-- [ ] Steps 8–15
+- [x] Step 7 – Preview (Remotion) (awaiting "works")
+- [ ] Step 8 – Export + download
+- [ ] Steps 9–15
 - Open (Step 9): deleting a paragraph added with "+ Add" should merge it back into the previous one instead of becoming a cut.
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
@@ -51,6 +52,9 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
   - Slots of 0.2s: speaking (within 0.3s of a word), moving (> 0.5%), still. Still gaps ≤ 0.4s between moving slots count as moving (scroll flicker).
   - Cleanup: silent+still > 1.5s → cut, keeping 0.4s (0.2 each edge); silent+moving > 2s → 4×; trim lead/tail keeping 0.5s; retakes (AI mode only) → cut if < 20% moving, else 4×; deleted paragraphs → cut.
   - Sync per paragraph: cleaned video longer than the voice → speed the whole paragraph up (max 2×, multiplies cleanup speeds), any rest plays without narration. Voice longer → freeze the stillest frame (lowest max(score in, score out)) for the difference. With no current clip, the voice length is estimated (marked ≈). Original voice mode: cleanup only, no retiming, no retake cuts.
+- Preview (Step 7): Remotion 4.0.539 (`remotion`, `@remotion/player`, `@remotion/media`, all the same version). `src/remotion/demo-video.tsx` is the one composition for preview and export. It only renders `inputProps` built from the sync plan: each piece is a `<Sequence>` + `<Video trimBefore playbackRate>`, freezes are `<Freeze frame={0}>` on the piece's last frame, and voice clips are `<Audio>` in `<Sequence>`s. The original audio is muted in AI mode, and pieces faster than 2× are always muted. 30 fps; size is the recording's aspect at 1080p.
+- **The editor is in output (edited video) time**: player, control bar, timeline ruler and tracks, and Script paragraph timestamps. Segments/cuts stay stored in source time; convert with `sourceToOutput` / `outputToSource` / `segmentRanges` (lib/sync.ts). Until motion is analyzed, `identityPlan` plays the recording as-is.
+- Player: `controls={false}`, our control bar drives it via PlayerRef (`seekTo`, `play`, `pause`, `toggle`, `setVolume`, `mute`) and the `frameupdate` / `play` / `pause` / `ended` events (`use-playback.ts`). `moveToBeginningWhenEnded={false}`. Remotion prints a license note in the console (free for individuals / companies ≤ 3 people); `acknowledgeRemotionLicense` is left unset.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
 
@@ -85,12 +89,12 @@ src/
     editor/debug-drawer.tsx          Debug drawer: Cleanup & sync (duration before → after, per-paragraph decisions, cleanup actions, Re-analyze); segmentation table + Rebuild; rewrite comparison + Run again
     editor/use-sync-plan.ts          loads motion + transcript, auto-analyzes old projects, memoizes buildSyncPlan
     editor/editor.tsx                loads project, layout, Space shortcut, skeleton, not-found
-    editor/use-playback.ts           playback state (currentTime, seek, toggle, playRange, volume) used by preview, control bar and timeline; Step 7 swaps in Remotion Player behind it
+    editor/use-playback.ts           Remotion Player-backed playback (output time): currentTime, seek, toggle, playRange, volume/mute, attachPlayer
     editor/top-bar.tsx               back, editable title (saves on blur/Enter, Esc reverts), Export
     editor/left-panel.tsx            collapsible panel, 5 tabs with animated underline, empty states
-    editor/preview.tsx               dot-grid canvas, aspect-fit framed <video>, play overlay, codec error state
+    editor/preview.tsx               dot-grid canvas, aspect-fit framed Remotion <Player> of DemoVideo, play overlay, "N paragraphs will play silently" pill, codec error fallback
     editor/control-bar.tsx           captions/cut (inactive placeholders), play, time, volume, timeline zoom
-    editor/timeline.tsx              debug strips while the drawer is open (activity: speaking/moving/still; plan: cut/4×/freeze ticks); ruler (adaptive ticks), filmstrip split at paragraph boundaries (deleted ones faded), voice track (real AI clip length, orange dot if outdated, dashed if no voice yet, amber if the clip overruns its paragraph), hover guide, draggable playhead, auto-follow
+    editor/timeline.tsx              (output time) video track = plan pieces (paragraph number, speed badge, freeze hatch, cut markers), voice track = clips where they play (dashed if missing/outdated), debug strips while the drawer is open (activity: speaking/moving/still; plan: cut/4×/freeze ticks); ruler (adaptive ticks), filmstrip split at paragraph boundaries (deleted ones faded), voice track (real AI clip length, orange dot if outdated, dashed if no voice yet, amber if the clip overruns its paragraph), hover guide, draggable playhead, auto-follow
     ui/                              shadcn: alert-dialog, button, input, skeleton, slider, sonner, tooltip
   lib/
     types.ts                         Project types
@@ -108,6 +112,8 @@ src/
     ffmpeg.ts                        extractAudio (mono 16 kHz 64k MP3)
     client.ts                        browser helpers (mediaUrl, readVideoInfo, uploadVideo, updateProject)
     format.ts                        formatTime, formatRelative, titleFromFileName
+  remotion/
+    demo-video.tsx                   DemoVideo composition (preview + export), FPS, compositionSize
 data/projects/{id}/                  gitignored
   project.json
   original.{mp4|mov|webm|…}          never modified

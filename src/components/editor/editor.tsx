@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { FileQuestion } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { mediaUrl, rebuildSegments } from "@/lib/client";
+import { identityPlan } from "@/lib/sync";
 import { voiceOf } from "@/lib/voice-settings";
 import type { Project } from "@/lib/types";
 import { ControlBar, ZOOM_LEVELS } from "./control-bar";
@@ -44,10 +45,12 @@ export function Editor({ id }: { id: string }) {
 export type ProjectUpdate = (next: Project | ((prev: Project) => Project)) => void;
 
 function EditorLoaded({ project, onChange }: { project: Project; onChange: ProjectUpdate }) {
-  const playback = usePlayback(project.video.duration);
+  const sync = useSyncPlan(project);
+  // Until screen activity is analyzed, play the recording as-is.
+  const plan = useMemo(() => sync.plan ?? identityPlan(project), [sync.plan, project]);
+  const playback = usePlayback(plan.outputDuration);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
-  const sync = useSyncPlan(project);
   const { toggle } = playback;
 
   // Projects transcribed before segments existed: build them once.
@@ -76,18 +79,14 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
       <div className="flex min-h-0 flex-1">
         <LeftPanel
           content={{
-            script: <ScriptView project={project} playback={playback} onChange={onChange} />,
+            script: <ScriptView project={project} plan={plan} playback={playback} onChange={onChange} />,
             voice: (
               <VoiceTab project={project} onChange={onChange} volume={playback.muted ? 0 : playback.volume} />
             ),
           }}
         />
         <main className="relative flex min-w-0 flex-1 flex-col">
-          <Preview
-            src={mediaUrl(project.id, project.video.file)}
-            aspect={project.video.width / project.video.height || 16 / 9}
-            playback={playback}
-          />
+          <Preview project={project} plan={plan} playback={playback} />
           <ControlBar playback={playback} zoomIndex={zoomIndex} onZoomIndex={setZoomIndex} />
           <Timeline
             playback={playback}
@@ -95,7 +94,8 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
             thumbnailUrl={project.thumbnail ? mediaUrl(project.id, project.thumbnail) : null}
             segments={project.segments}
             voice={voiceOf(project)}
-            plan={debugOpen ? sync.plan : null}
+            plan={plan}
+            debug={debugOpen}
           />
           <AnimatePresence>
             {debugOpen && (
@@ -103,6 +103,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
                 project={project}
                 playback={playback}
                 sync={sync}
+                plan={plan}
                 onChange={onChange}
                 onClose={() => setDebugOpen(false)}
               />

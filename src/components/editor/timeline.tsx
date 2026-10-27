@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Film, Mic } from "lucide-react";
+import { Film, Mic, Snowflake } from "lucide-react";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { clipStatus, estimateSeconds } from "@/lib/voice-settings";
-import { SYNC_CONFIG, type SyncPlan } from "@/lib/sync";
+import { pieceLength, segmentRanges, sourceToOutput, SYNC_CONFIG, type SyncPlan } from "@/lib/sync";
 import type { Segment, VoiceSettings } from "@/lib/types";
 import type { Playback } from "./use-playback";
 
@@ -39,11 +39,12 @@ interface Props {
   thumbnailUrl: string | null;
   segments: Segment[] | undefined;
   voice: VoiceSettings;
-  plan: SyncPlan | null; // shown as strips while the debug drawer is open
+  plan: SyncPlan; // everything on the timeline is in output (edited video) time
+  debug: boolean; // show activity + plan strips
 }
 
-export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan }: Props) {
-  const { currentTime, playing, seek } = playback;
+export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, debug }: Props) {
+  const { currentTime, seek } = playback;
   const duration = playback.duration || 1;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [viewW, setViewW] = useState(0);
@@ -64,19 +65,60 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan }
   const [major, divisions] = STEPS.find(([m]) => m * pps >= 72) ?? STEPS[STEPS.length - 1];
   const minorPx = (major / divisions) * pps;
 
+  // Voice blocks in output time.
+  const ranges = segmentRanges(plan);
+  const voiceBlocks: {
+    key: string;
+    index: number;
+    start: number;
+    length: number;
+    label: string;
+    kind: "clip" | "missing" | "speech";
+    outdated?: boolean;
+  }[] = [];
+  (segments ?? []).forEach((seg, index) => {
+    const range = ranges.get(seg.id);
+    if (!range || seg.deleted) return;
+    if (voice.mode === "original") {
+      const start = sourceToOutput(plan, seg.speechStart);
+      const end = sourceToOutput(plan, seg.speechEnd);
+      if (end > start) voiceBlocks.push({ key: seg.id, index, start, length: end - start, label: `${(end - start).toFixed(1)}s`, kind: "speech" });
+      return;
+    }
+    const placed = plan.voice.find((v) => v.segmentId === seg.id);
+    const status = clipStatus(seg, voice);
+    if (placed) {
+      voiceBlocks.push({ key: seg.id, index, start: placed.outputStart, length: placed.duration, label: `${placed.duration.toFixed(1)}s`, kind: "clip" });
+    } else if (status === "none" || status === "outdated") {
+      voiceBlocks.push({
+        key: seg.id,
+        index,
+        start: range.start,
+        length: Math.min(estimateSeconds(seg.text), range.end - range.start),
+        label: status === "none" ? "no voice yet" : "outdated",
+        kind: "missing",
+        outdated: status === "outdated",
+      });
+    }
+  });
+
+  const fps = SYNC_CONFIG.fps;
+  const activityRuns = runs(plan.states).map((r) => ({ value: r.value, start: r.start / fps, end: r.end / fps }));
+
   const timeAt = (clientX: number) => {
     const rect = scrollerRef.current!.getBoundingClientRect();
     const x = clientX - rect.left + scrollerRef.current!.scrollLeft;
     return Math.max(0, Math.min(duration, (x - PAD) / pps));
   };
 
-  // Keep the playhead in view while playing, and after zooming.
+  // Keep the playhead in view whenever it moves (playing or seeking); manual scrolling is left alone.
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el || !playing || zoom === 1) return;
+    if (!el || zoom === 1) return;
     const x = xOf(currentTime);
     if (x > el.scrollLeft + el.clientWidth - 40 || x < el.scrollLeft) el.scrollLeft = x - el.clientWidth * 0.2;
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime]);
   useEffect(() => {
     const el = scrollerRef.current;
     if (el) el.scrollLeft = xOf(currentTime) - el.clientWidth / 2;
@@ -84,7 +126,7 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan }
   }, [zoom]);
 
   return (
-    <div className={cn("shrink-0 border-t bg-white transition-[height]", plan ? "h-[176px]" : "h-[164px]")}>
+    <div className={cn("shrink-0 border-t bg-white transition-[height]", debug ? "h-[176px]" : "h-[164px]")}>
       <div
         ref={scrollerRef}
         className="scroll-thin relative h-full overflow-x-auto overflow-y-hidden select-none"
@@ -124,80 +166,94 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan }
               ))}
             </div>
 
-            {/* Video track: one filmstrip, split at paragraph boundaries */}
-            {(segments?.length ? segments : [null]).map((seg, i) => {
-              const from = seg?.start ?? 0;
-              const to = seg?.end ?? duration;
-              const split = !!segments?.length;
+            {/* Video track: the plan's pieces in output time. Cleanup cuts leave a small marker. */}
+            {plan.pieces.map((p, i) => {
+              const prev = plan.pieces[i - 1];
+              const newParagraph = !prev || prev.segmentId !== p.segmentId;
+              const cutBefore = prev && p.sourceStart - prev.sourceEnd > 0.05 ? p.sourceStart - prev.sourceEnd : 0;
+              const moving = (p.sourceEnd - p.sourceStart) / p.speed;
+              const segIndex = segments?.findIndex((s) => s.id === p.segmentId) ?? -1;
               return (
-                <div
-                  key={seg?.id ?? "all"}
-                  className={cn("absolute h-14 overflow-hidden rounded-lg border bg-muted transition-opacity", seg?.deleted && "opacity-30")}
-                  style={{
-                    top: VIDEO_TOP,
-                    left: xOf(from) + (split ? 1 : 0),
-                    width: Math.max(2, (to - from) * pps - (split ? 2 : 0)),
-                    ...(thumbnailUrl && {
-                      backgroundImage: `url(${thumbnailUrl})`,
-                      backgroundSize: "auto 100%",
-                      backgroundRepeat: "repeat-x",
-                      backgroundPositionX: -(from * pps), // frames continue across the splits
-                    }),
-                  }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-black/5 to-transparent" />
-                  <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
-                    {split ? (
-                      i + 1
-                    ) : (
-                      <>
-                        <Film className="size-3" /> Recording · {formatTime(duration)}
-                      </>
+                <div key={i}>
+                  <div
+                    className="absolute h-14 overflow-hidden rounded-md border bg-muted"
+                    style={{
+                      top: VIDEO_TOP,
+                      left: xOf(p.outputStart) + (newParagraph ? 1 : 0),
+                      width: Math.max(2, pieceLength(p) * pps - (newParagraph ? 1 : 0)),
+                      ...(thumbnailUrl && {
+                        backgroundImage: `url(${thumbnailUrl})`,
+                        backgroundSize: "auto 100%",
+                        backgroundRepeat: "repeat-x",
+                        backgroundPositionX: -(p.sourceStart * pps), // frames continue across pieces
+                      }),
+                    }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/35 via-black/5 to-transparent" />
+                    {p.freezeAfter > 0 && (
+                      <div
+                        className="absolute inset-y-0 right-0 flex items-end justify-end bg-[repeating-linear-gradient(135deg,rgba(255,92,53,0.28)_0_4px,rgba(255,255,255,0.15)_4px_8px)] p-1"
+                        style={{ width: p.freezeAfter * pps }}
+                      >
+                        <span className="flex items-center gap-0.5 rounded bg-white/90 px-1 text-[9.5px] font-medium text-brand">
+                          <Snowflake className="size-2.5" /> {p.freezeAfter.toFixed(1)}s
+                        </span>
+                      </div>
                     )}
-                  </span>
+                    <div className="absolute top-1.5 left-1.5 flex gap-1">
+                      {newParagraph && (
+                        <span className="flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+                          {segIndex >= 0 ? (
+                            segIndex + 1
+                          ) : (
+                            <>
+                              <Film className="size-3" /> Recording · {formatTime(duration)}
+                            </>
+                          )}
+                        </span>
+                      )}
+                      {Math.abs(p.speed - 1) > 0.02 && moving * pps > 34 && (
+                        <span className="rounded-md bg-white/90 px-1 py-0.5 text-[10px] font-medium text-foreground tabular-nums">
+                          {p.speed.toFixed(p.speed >= 3 ? 0 : 1)}×
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {cutBefore > 0 && (
+                    <div
+                      title={`Cut ${cutBefore.toFixed(1)}s`}
+                      className="absolute z-[1] h-14 w-[3px] -translate-x-1/2 rounded-full bg-foreground/70 ring-2 ring-white"
+                      style={{ top: VIDEO_TOP, left: xOf(p.outputStart) }}
+                    />
+                  )}
                 </div>
               );
             })}
 
-            {/* Voice track: only where there's narration, silence stays empty.
-                With an AI clip, the block shows the clip's real length (amber if it overruns its paragraph). */}
-            {segments?.length ? (
-              segments.map((seg, i) => {
-                if (seg.deleted) return null;
-                const status = voice.mode === "ai" ? clipStatus(seg, voice) : "original";
-                if (status === "empty" && !seg.isRetake) return null;
-                const useClip = status === "current" || status === "outdated";
-                const from = seg.speechStart;
-                // Paragraphs added by hand have no recorded speech: show their estimated length.
-                const len = useClip
-                  ? seg.voice!.duration
-                  : Math.max(seg.speechEnd - seg.speechStart, status === "none" ? estimateSeconds(seg.text) : 0);
-                const overruns = useClip && from + len > seg.end;
-                const active = currentTime >= from && currentTime < from + len;
+            {/* Voice track: AI clips exactly where they play; your own speech in original-voice mode */}
+            {voiceBlocks.length ? (
+              voiceBlocks.map((b) => {
+                const active = currentTime >= b.start && currentTime < b.start + b.length;
                 return (
                   <div
-                    key={seg.id}
+                    key={b.key}
                     className={cn(
                       "absolute flex h-8 items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-[11px] transition-colors duration-150",
-                      seg.isRetake || status === "none"
+                      b.kind === "missing"
                         ? "border-dashed bg-white text-muted-foreground/70"
-                        : overruns
-                          ? "border-amber-400 bg-amber-50 text-amber-700"
-                          : active
-                            ? "border-brand/50 bg-brand/[0.07] text-foreground"
-                            : "border-[#DCDCE1] bg-[#F3F3F5] text-muted-foreground",
+                        : active
+                          ? "border-brand/50 bg-brand/[0.07] text-foreground"
+                          : "border-[#DCDCE1] bg-[#F3F3F5] text-muted-foreground",
                     )}
-                    style={{ top: VOICE_TOP, left: xOf(from), width: Math.max(4, len * pps) }}
+                    style={{ top: VOICE_TOP, left: xOf(b.start), width: Math.max(4, b.length * pps) }}
                   >
-                    {status === "outdated" ? (
+                    {b.outdated ? (
                       <span className="size-1.5 shrink-0 rounded-full bg-brand" />
                     ) : (
                       <Mic className={cn("size-3 shrink-0", active && "text-brand")} />
                     )}
-                    <span className="shrink-0 font-medium">{i + 1}</span>
-                    <span className="truncate opacity-70">
-                      {seg.isRetake ? "retake" : status === "none" ? "no voice yet" : `${len.toFixed(1)}s`}
-                    </span>
+                    <span className="shrink-0 font-medium">{b.index + 1}</span>
+                    <span className="truncate opacity-70">{b.label}</span>
                   </div>
                 );
               })
@@ -206,42 +262,54 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan }
                 className="absolute flex h-8 items-center justify-center rounded-lg border border-dashed text-[11px] text-muted-foreground"
                 style={{ top: VOICE_TOP, left: xOf(0), width: duration * pps }}
               >
-                Your voice will appear here after transcription
+                {segments ? "No narration" : "Your voice will appear here after transcription"}
               </div>
             )}
 
-            {/* Debug strips: what's on screen (speaking / moving / still) and what the plan does with it */}
-            {plan && (
+            {/* Debug strips: activity (speaking / moving / still) and plan (fast-forward / freeze), mapped to output time */}
+            {debug && plan.states.length > 0 && (
               <>
-                {runs(plan.states).map((r) => (
-                  <div
-                    key={`s${r.start}`}
-                    className="absolute h-[5px] first:rounded-l-full"
-                    style={{
-                      top: STRIP_TOP,
-                      left: xOf(r.start / SYNC_CONFIG.fps),
-                      width: ((r.end - r.start) / SYNC_CONFIG.fps) * pps,
-                      background: STATE_COLOR[r.value],
-                    }}
-                  />
-                ))}
-                <div className="absolute h-[5px] rounded-full bg-[#F3F3F5]" style={{ top: STRIP_TOP + 8, left: xOf(0), width: duration * pps }} />
-                {plan.actions.map((a) => (
-                  <div
-                    key={`a${a.start}`}
-                    className="absolute h-[5px]"
-                    style={{ top: STRIP_TOP + 8, left: xOf(a.start), width: (a.end - a.start) * pps, background: ACTION_COLOR[a.kind] }}
-                  />
-                ))}
-                {plan.pieces
-                  .filter((p) => p.freezeAfter > 0)
-                  .map((p) => (
+                {plan.pieces.flatMap((p, pi) => {
+                  const moving = (p.sourceEnd - p.sourceStart) / p.speed;
+                  const blocks = activityRuns
+                    .filter((r) => r.end > p.sourceStart && r.start < p.sourceEnd)
+                    .map((r) => {
+                      const a = Math.max(r.start, p.sourceStart);
+                      const b = Math.min(r.end, p.sourceEnd);
+                      return (
+                        <div
+                          key={`s${pi}-${a}`}
+                          className="absolute h-[5px]"
+                          style={{
+                            top: STRIP_TOP,
+                            left: xOf(p.outputStart + (a - p.sourceStart) / p.speed),
+                            width: ((b - a) / p.speed) * pps,
+                            background: STATE_COLOR[r.value],
+                          }}
+                        />
+                      );
+                    });
+                  return [
+                    ...blocks,
                     <div
-                      key={`f${p.sourceEnd}`}
-                      className="absolute h-[11px] w-[3px] rounded-full"
-                      style={{ top: STRIP_TOP + 5, left: xOf(p.sourceEnd) - 1.5, background: ACTION_COLOR.freeze }}
-                    />
-                  ))}
+                      key={`p${pi}`}
+                      className="absolute h-[5px]"
+                      style={{
+                        top: STRIP_TOP + 8,
+                        left: xOf(p.outputStart),
+                        width: moving * pps,
+                        background: p.speed > 2.5 ? ACTION_COLOR.fast : "#E1E1E6",
+                      }}
+                    />,
+                    p.freezeAfter > 0 && (
+                      <div
+                        key={`f${pi}`}
+                        className="absolute h-[5px]"
+                        style={{ top: STRIP_TOP + 8, left: xOf(p.outputStart + moving), width: p.freezeAfter * pps, background: ACTION_COLOR.freeze }}
+                      />
+                    ),
+                  ];
+                })}
               </>
             )}
 

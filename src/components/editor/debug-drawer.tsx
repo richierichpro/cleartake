@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { rebuildSegments, rewriteScript } from "@/lib/client";
 import { formatRelative, formatTime } from "@/lib/format";
 import { SEGMENT_CONFIG } from "@/lib/segments";
-import { SYNC_CONFIG, type CleanupAction } from "@/lib/sync";
+import { outputToSource, sourceToOutput, SYNC_CONFIG, type CleanupAction, type SyncPlan } from "@/lib/sync";
 import { ACTION_COLOR, STATE_COLOR } from "./timeline";
 import type { useSyncPlan } from "./use-sync-plan";
 import { cn } from "@/lib/utils";
@@ -21,12 +21,14 @@ export function DebugDrawer({
   project,
   playback,
   sync,
+  plan,
   onChange,
   onClose,
 }: {
   project: Project;
   playback: Playback;
   sync: ReturnType<typeof useSyncPlan>;
+  plan: SyncPlan; // for mapping source times to the edited video
   onChange: (p: Project) => void;
   onClose: () => void;
 }) {
@@ -48,7 +50,7 @@ export function DebugDrawer({
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <SyncDebug sync={sync} playback={playback} />
         <div className="mx-4 border-t" />
-        <SegmentsDebug project={project} playback={playback} onChange={onChange} />
+        <SegmentsDebug project={project} plan={plan} playback={playback} onChange={onChange} />
         <div className="mx-4 border-t" />
         <RewriteDebug project={project} onChange={onChange} />
       </div>
@@ -58,10 +60,12 @@ export function DebugDrawer({
 
 function SegmentsDebug({
   project,
+  plan,
   playback,
   onChange,
 }: {
   project: Project;
+  plan: SyncPlan;
   playback: Playback;
   onChange: (p: Project) => void;
 }) {
@@ -120,11 +124,12 @@ function SegmentsDebug({
             {segments.map((s, i) => {
               const len = speech[i];
               const flagged = s.breakReason !== "end" && (len < c.minDuration || len > c.maxDuration);
-              const active = playback.currentTime >= s.start && playback.currentTime < s.end;
+              const sourceNow = outputToSource(plan, playback.currentTime);
+              const active = sourceNow >= s.start && sourceNow < s.end;
               return (
                 <tr
                   key={s.id}
-                  onClick={() => playback.seek(s.start)}
+                  onClick={() => playback.seek(sourceToOutput(plan, s.start))}
                   className={cn("cursor-pointer border-b border-border/60 transition-colors hover:bg-[#FAFAFB]", active && "bg-brand/[0.05]")}
                 >
                   <td className="py-1.5 pr-2 text-muted-foreground">{i + 1}</td>
@@ -285,9 +290,9 @@ function SyncDebug({ sync, playback }: { sync: ReturnType<typeof useSyncPlan>; p
             <Swatch color={STATE_COLOR.moving} label="moving" />
             <Swatch color={STATE_COLOR.still} label="still" />
             <span className="ml-2 font-medium text-foreground">Strip 2:</span>
-            <Swatch color={ACTION_COLOR.cut} label="cut" />
-            <Swatch color={ACTION_COLOR.fast} label={`${c.fastSpeed}×`} />
+            <Swatch color={ACTION_COLOR.fast} label="fast-forward" />
             <Swatch color={ACTION_COLOR.freeze} label="freeze" />
+            <Swatch color={ACTION_COLOR.cut} label="cut (marker on video)" />
           </div>
 
           <table className="mt-3 w-full text-xs tabular-nums">
@@ -328,7 +333,7 @@ function SyncDebug({ sync, playback }: { sync: ReturnType<typeof useSyncPlan>; p
               {plan.actions.map((a) => (
                 <li
                   key={`${a.start}-${a.kind}`}
-                  onClick={() => playback.seek(a.start)}
+                  onClick={() => playback.seek(sourceToOutput(plan, a.start))}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-[#FAFAFB]"
                 >
                   <span className="h-2 w-3 shrink-0 rounded-sm" style={{ background: ACTION_COLOR[a.kind] }} />

@@ -21,7 +21,8 @@ import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { generateVoice, mediaUrl, rewriteScript, splitSegment, updateSegment } from "@/lib/client";
+import { generateVoice, rewriteScript, splitSegment, updateSegment } from "@/lib/client";
+import { outputToSource, segmentRanges, type SyncPlan } from "@/lib/sync";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { clipStatus, creditCost, estimateSeconds, voiceOf, type ClipStatus } from "@/lib/voice-settings";
@@ -36,10 +37,12 @@ const pluralize = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"
 // Script tab: reads like a document. Timestamp gutter on the left, editable paragraphs on the right.
 export function ScriptView({
   project,
+  plan,
   playback,
   onChange,
 }: {
   project: Project;
+  plan: SyncPlan;
   playback: Playback;
   onChange: ProjectUpdate;
 }) {
@@ -109,40 +112,12 @@ export function ScriptView({
   }, [save]);
 
   // ---- AI voice -------------------------------------------------------------
-  const audio = useRef<HTMLAudioElement | null>(null);
-  const playingSeg = useRef<Segment | null>(null);
-
-  // The AI voice follows the app's volume slider and mute button, like the video.
-  useEffect(() => {
-    if (!audio.current) return;
-    audio.current.volume = playback.volume;
-    audio.current.muted = playback.muted;
-  }, [playback.volume, playback.muted]);
-
-  function stopVoice() {
-    audio.current?.pause();
-    playingSeg.current = null;
-  }
-
-  // Pausing the video before the paragraph ends also stops its voice.
-  useEffect(() => {
-    const seg = playingSeg.current;
-    if (!playback.playing && seg && playback.currentTime < seg.end - 0.15) stopVoice();
-  }, [playback.playing, playback.currentTime]);
-
+  // The main player plays the edited video with its AI voice, so "Play" just plays the paragraph's output range.
+  const ranges = segmentRanges(plan);
   function play(seg: Segment) {
-    stopVoice();
-    if (aiMode && seg.voice && clipStatus(seg, voice) === "current") {
-      audio.current ??= new Audio();
-      audio.current.src = mediaUrl(project.id, seg.voice.file);
-      audio.current.volume = playback.volume;
-      audio.current.muted = playback.muted;
-      audio.current.play().catch(() => {});
-      playingSeg.current = seg;
-      playback.playRange(seg.start, seg.end, { muted: true });
-    } else {
-      playback.playRange(seg.start, seg.end);
-    }
+    const r = ranges.get(seg.id);
+    if (r) playback.playRange(r.start, r.end);
+    else toast("This paragraph is cut from the video", { description: "Restore it or turn off cleanup to hear it." });
   }
 
   async function regenerate(seg: Segment, quiet = false) {
@@ -211,7 +186,7 @@ export function ScriptView({
 
   async function addParagraph() {
     try {
-      const { project: updated, id } = await splitSegment(project.id, playback.currentTime);
+      const { project: updated, id } = await splitSegment(project.id, outputToSource(plan, playback.currentTime));
       applyServer(updated);
       setFocusId(id);
     } catch (err) {
@@ -343,7 +318,11 @@ export function ScriptView({
             <Paragraph
               key={seg.id}
               seg={seg}
-              active={t >= seg.start && t < seg.end}
+              outputStart={ranges.get(seg.id)?.start ?? null}
+              active={(() => {
+                const r = ranges.get(seg.id);
+                return !!r && t >= r.start && t < r.end;
+              })()}
               status={aiMode ? clipStatus(seg, voice) : "empty"}
               aiMode={aiMode}
               busy={generating.has(seg.id)}
@@ -373,6 +352,7 @@ export function ScriptView({
 
 function Paragraph({
   seg,
+  outputStart,
   active,
   status,
   aiMode,
@@ -389,6 +369,7 @@ function Paragraph({
   onDelete,
 }: {
   seg: Segment;
+  outputStart: number | null; // where it starts in the edited video; null = cut
   active: boolean;
   status: ClipStatus;
   aiMode: boolean;
@@ -422,13 +403,15 @@ function Paragraph({
       <div className="flex w-11 shrink-0 flex-col items-start gap-1.5 pt-[5px]">
         <button
           onClick={onPlay}
-          aria-label={`Play paragraph at ${formatTime(seg.start)}`}
+          aria-label={`Play paragraph at ${outputStart === null ? "cut" : formatTime(outputStart)}`}
           className={cn(
             "relative h-5 w-11 rounded-md text-left font-mono text-[11px] tabular-nums transition-colors",
             active ? "text-brand" : "text-muted-foreground hover:text-foreground",
           )}
         >
-          <span className="transition-opacity group-hover:opacity-0">{formatTime(seg.start)}</span>
+          <span className="transition-opacity group-hover:opacity-0">
+            {outputStart === null ? "cut" : formatTime(outputStart)}
+          </span>
           <span className="absolute inset-0 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <Play className="size-3 fill-current" /> Play
           </span>
