@@ -5,9 +5,11 @@ import { Player } from "@remotion/player";
 import { AnimatePresence, motion } from "framer-motion";
 import { Play, Sparkles, TriangleAlert } from "lucide-react";
 import { mediaUrl } from "@/lib/client";
+import { cn } from "@/lib/utils";
 import { isSegmentRemoved } from "@/lib/edits";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
-import { frameProps } from "@/lib/visuals";
+import { frameProps, recordingBox } from "@/lib/visuals";
+import type { ZoomCandidate } from "@/lib/zoom-detect";
 import type { SyncPlan } from "@/lib/sync";
 import type { Project } from "@/lib/types";
 import { compositionSize, DemoVideo, FPS, type DemoVideoProps } from "@/remotion/demo-video";
@@ -15,7 +17,17 @@ import type { Playback } from "./use-playback";
 
 const PADDING = 48;
 
-export function Preview({ project, plan, playback }: { project: Project; plan: SyncPlan; playback: Playback }) {
+export function Preview({
+  project,
+  plan,
+  playback,
+  debugBoxes = [],
+}: {
+  project: Project;
+  plan: SyncPlan;
+  playback: Playback;
+  debugBoxes?: ZoomCandidate[]; // Step 12: detected change regions to outline (debug only)
+}) {
   const { attachPlayer, playing, toggle } = playback;
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -95,6 +107,33 @@ export function Preview({ project, plan, playback }: { project: Project; plan: S
             style={{ width: "100%", height: "100%" }}
             errorFallback={() => <PlaybackError />}
           />
+
+          {/* Debug: detected change regions, drawn over the recording area */}
+          {debugBoxes.length > 0 &&
+            (() => {
+              const rec = recordingBox(JSON.parse(frameKey), size.w, size.h);
+              return debugBoxes.map((z) => (
+                <div
+                  key={z.id}
+                  className="pointer-events-none absolute rounded-[4px] border-2 border-brand bg-brand/10"
+                  style={{
+                    left: rec.left + z.x * rec.width,
+                    top: rec.top + z.y * rec.height,
+                    width: z.w * rec.width,
+                    height: z.h * rec.height,
+                  }}
+                >
+                  <span
+                    className={cn(
+                      "absolute left-0 rounded bg-brand px-1 font-mono text-[10px] text-white",
+                      z.y < 0.06 ? "top-0.5 left-0.5" : "-top-5", // keep the label visible at the top edge
+                    )}
+                  >
+                    {z.start.toFixed(1)}s · {Math.round(z.w * z.h * 100)}%
+                  </span>
+                </div>
+              ));
+            })()}
 
           <AnimatePresence>
             {!playing && (

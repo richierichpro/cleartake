@@ -7,7 +7,7 @@ import { FileQuestion } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { mediaUrl, rebuildSegments } from "@/lib/client";
-import { identityPlan } from "@/lib/sync";
+import { identityPlan, outputToSource } from "@/lib/sync";
 import { voiceOf } from "@/lib/voice-settings";
 import type { Project } from "@/lib/types";
 import { ControlBar, ZOOM_LEVELS } from "./control-bar";
@@ -22,6 +22,7 @@ import { TopBar } from "./top-bar";
 import { usePlayback } from "./use-playback";
 import { useSyncPlan } from "./use-sync-plan";
 import { useEdits } from "./use-edits";
+import { useZoomDetection } from "./use-zoom-detection";
 
 export function Editor({ id }: { id: string }) {
   const [project, setProject] = useState<Project | null | "missing">(null);
@@ -52,8 +53,16 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
   const plan = useMemo(() => sync.plan ?? identityPlan(project), [sync.plan, project]);
   const playback = usePlayback(plan.outputDuration);
   const edits = useEdits(project, plan, onChange, playback.currentTime);
+
   const [zoomIndex, setZoomIndex] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
+  const zoomDetection = useZoomDetection(project.id, debugOpen);
+  // Debug: outline detected change regions while they happen (and briefly after).
+  const sourceNow = outputToSource(plan, playback.currentTime);
+  const debugBoxes =
+    debugOpen && zoomDetection.showBoxes
+      ? (zoomDetection.detection?.candidates ?? []).filter((z) => sourceNow >= z.start - 0.2 && sourceNow <= z.end + 0.8)
+      : [];
   const { toggle } = playback;
 
   // Projects transcribed before segments existed: build them once.
@@ -95,8 +104,24 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
             ),
           }}
         />
-        <main className="relative flex min-w-0 flex-1 flex-col">
-          <Preview project={project} plan={plan} playback={playback} />
+        <main className="flex min-w-0 flex-1 flex-col">
+          {/* The Debug drawer sits beside the preview (not over it), so nothing on the video is hidden. */}
+          <div className="flex min-h-0 flex-1">
+            <Preview project={project} plan={plan} playback={playback} debugBoxes={debugBoxes} />
+            <AnimatePresence>
+              {debugOpen && (
+                <DebugDrawer
+                  project={project}
+                  playback={playback}
+                  sync={sync}
+                  plan={plan}
+                  zoomDetection={zoomDetection}
+                  onChange={onChange}
+                  onClose={() => setDebugOpen(false)}
+                />
+              )}
+            </AnimatePresence>
+          </div>
           <ControlBar playback={playback} edits={edits} zoomIndex={zoomIndex} onZoomIndex={setZoomIndex} />
           <Timeline
             playback={playback}
@@ -108,18 +133,6 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
             debug={debugOpen}
             edits={edits}
           />
-          <AnimatePresence>
-            {debugOpen && (
-              <DebugDrawer
-                project={project}
-                playback={playback}
-                sync={sync}
-                plan={plan}
-                onChange={onChange}
-                onClose={() => setDebugOpen(false)}
-              />
-            )}
-          </AnimatePresence>
         </main>
       </div>
     </div>

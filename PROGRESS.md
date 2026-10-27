@@ -14,7 +14,9 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 9 – Trim and cut
 - [x] Step 10 – Visuals tab (Background)
 - [–] Step 11 – Music tab: skipped by decision (not important for the hackathon). Voice loudness normalization skipped with it; revisit only if mixing original + AI voice or adding music.
-- [ ] Steps 12–15
+- [x] Step 12 – Zoom detection (debug only) (awaiting "works")
+- [ ] Step 13 – Zooms tab
+- [ ] Steps 14–15
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
 
@@ -65,6 +67,9 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
   - Timeline: S / ✂ splits at the playhead; click a piece between splits on the video track to select it; drag on the video track for a range; Delete/Backspace cuts; Esc clears. Ruler and other areas scrub. Trim handles on both ends (dragging only trims further; the ✂ marker restores). Splits used by a cut are removed automatically; clicking a split line removes it. User cuts/trims show orange ✂ markers (click = restore); cleanup cuts show grey notches.
   - Script delete = PATCH segment `{deleted: true}`: adds a Cut with `segmentId`, or merges a hand-added empty paragraph into the previous one. Restore removes that cut.
 - Visuals (Step 10): `project.visuals` (lib/visuals.ts: 8 CSS-gradient presets, SHADOWS in px at 1080p, defaults: background on, Aurora, medium shadow, 16px corners, 8% padding). Background on → **16:9 canvas** with the recording centred inside the padding (fit by aspect); off → the recording's own aspect, edge to edge. `frameProps()` → `DemoVideoProps.frame`; radius/shadow scale with canvas height/1080, so 1080p and 1440p exports look identical. A custom image is uploaded raw to POST /background → `background-{id}.{ext}` (replaces the preset; picking a preset clears it). Settings save debounced (300ms) with instant local preview. The Scenes sub-tab is a placeholder until Step 15.
+- Zoom detection (Step 12, debug only): pure `detectZoomCandidates(frames.gray)` in lib/zoom-detect.ts, thresholds in `ZOOM_DETECT_CONFIG`. Per frame: diff vs the previous frame → 8px grid cells; frames with > 35% of the screen changed are ignored (scroll / page load); cells changing in > 60% of frames within ±3s are ignored (spinners / videos); connected cells → boxes (≥ 2 cells, ≥ 48 px); boxes touching within 0.6s merge into events; events > 40% of the screen or < 150 changed px are dropped; boxes padded by 1 cell. Output: `zoom-candidates.json` {candidates: [{id, start, end, x, y, w, h (0–1 of the recording), changedPx}], skipped, config}. It takes about 20ms for a 36s recording. Runs (and caches) the first time the Debug drawer opens.
+  - Debug: list with output time, box size and strength (click = seek; "cut" if removed); boxes are outlined on the preview while they happen (+0.8s). `recordingBox()` in lib/visuals.ts gives the recording's rect on the canvas (shared with the composition).
+  - The Debug drawer now sits beside the preview (the preview shrinks) instead of covering it.
 - Toasts are top-right under the top bar so they never cover the timeline.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
@@ -88,6 +93,7 @@ src/
     api/projects/[id]/voice/[segmentId]/route.ts     POST → generate (or reuse cached) AI clip for one paragraph
     api/voices/route.ts              GET → ElevenLabs voices + credits used
     api/projects/[id]/background/route.ts    POST raw image → custom background · DELETE removes it
+    api/projects/[id]/zoom-candidates/route.ts  POST → run detection, save zoom-candidates.json
     api/projects/[id]/export/route.ts        GET export state (marks interrupted renders) · POST start export
     api/projects/[id]/export/download/route.ts  GET latest export as "{title}.mp4"
     api/projects/[id]/activity/route.ts      POST → sample frames, save motion.json + frames.gray
@@ -103,6 +109,7 @@ src/
     editor/voice-tab.tsx             Use original voice toggle, voice dropdown (name + gender/accent/style, preview button), model, credits bar
     editor/debug-drawer.tsx          Debug drawer: Cleanup & sync (duration before → after, per-paragraph decisions, cleanup actions, Re-analyze); segmentation table + Rebuild; rewrite comparison + Run again
     editor/use-edits.ts              selection + split / cutSelection / restoreCut / setTrim, each with an Undo toast
+    editor/use-zoom-detection.ts     loads cached zoom candidates when Debug opens; Re-detect; show-boxes toggle
     editor/use-sync-plan.ts          loads motion + transcript, auto-analyzes old projects, memoizes buildSyncPlan
     editor/editor.tsx                loads project, layout, Space shortcut, skeleton, not-found
     editor/use-playback.ts           Remotion Player-backed playback (output time): currentTime, seek, toggle, playRange, volume/mute, attachPlayer
@@ -131,6 +138,7 @@ src/
     client.ts                        browser helpers (mediaUrl, readVideoInfo, uploadVideo, updateProject)
     edits.ts                         (shared) removedRanges, subtractRanges, isSegmentRemoved, newCutId
     visuals.ts                       (shared) presets, SHADOWS, DEFAULT_VISUALS, visualsOf, frameProps
+    zoom-detect.ts                   (pure) ZOOM_DETECT_CONFIG, detectZoomCandidates
     format.ts                        formatTime, formatRelative, titleFromFileName
   remotion/
     demo-video.tsx                   DemoVideo composition (preview + export)
@@ -147,6 +155,7 @@ data/projects/{id}/                  gitignored
   voice-{hash}.mp3 / .json           AI clips + ElevenLabs character alignment (Step 5)
   motion.json                        { fps: 5, width: 160, height, frames, scores[] } (Step 6)
   frames.gray                        raw 8-bit gray frames, frames × width × height (Step 6; Step 12 reuses)
+  zoom-candidates.json               detected change regions (Step 12)
   background-{id}.{jpg|png|webp}     custom background image (Step 10)
   export-props.json                  inputProps of the last export (Step 8)
   export-{timestamp}.mp4             latest export (Step 8)

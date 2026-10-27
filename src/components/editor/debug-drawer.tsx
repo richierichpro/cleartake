@@ -11,17 +11,20 @@ import { SEGMENT_CONFIG } from "@/lib/segments";
 import { outputToSource, sourceToOutput, SYNC_CONFIG, type CleanupAction, type SyncPlan } from "@/lib/sync";
 import { ACTION_COLOR, STATE_COLOR } from "./timeline";
 import type { useSyncPlan } from "./use-sync-plan";
+import type { ZoomDetectionState } from "./use-zoom-detection";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 import type { Playback } from "./use-playback";
 
 // Debug views for automatic decisions, kept out of the main UI.
-// Covers only the preview so the control bar and timeline (224px while debugging) stay usable.
+// Sits beside the preview (the preview shrinks), so the video, control bar and timeline stay usable.
 export function DebugDrawer({
   project,
   playback,
   sync,
   plan,
+  zoomDetection,
   onChange,
   onClose,
 }: {
@@ -29,17 +32,19 @@ export function DebugDrawer({
   playback: Playback;
   sync: ReturnType<typeof useSyncPlan>;
   plan: SyncPlan; // for mapping source times to the edited video
+  zoomDetection: ZoomDetectionState;
   onChange: (p: Project) => void;
   onClose: () => void;
 }) {
   return (
     <motion.aside
-      initial={{ x: "100%", opacity: 0.6 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: "100%", opacity: 0.6 }}
-      transition={{ type: "spring", stiffness: 420, damping: 40 }}
-      className="absolute top-0 right-0 bottom-[224px] z-30 flex w-[500px] max-w-full flex-col border-l bg-white shadow-[-12px_0_40px_-20px_rgba(17,17,19,0.25)]"
+      initial={{ width: 0, opacity: 0 }}
+      animate={{ width: 500, opacity: 1 }}
+      exit={{ width: 0, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 420, damping: 42 }}
+      className="flex shrink-0 flex-col overflow-hidden border-l bg-white"
     >
+      <div className="flex h-full w-[500px] flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b px-4">
         <Bug className="size-4 text-muted-foreground" />
         <span className="text-sm font-medium">Debug</span>
@@ -50,9 +55,12 @@ export function DebugDrawer({
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <SyncDebug sync={sync} playback={playback} />
         <div className="mx-4 border-t" />
+        <ZoomDebug zoom={zoomDetection} plan={plan} playback={playback} />
+        <div className="mx-4 border-t" />
         <SegmentsDebug project={project} plan={plan} playback={playback} onChange={onChange} />
         <div className="mx-4 border-t" />
         <RewriteDebug project={project} onChange={onChange} />
+      </div>
       </div>
     </motion.aside>
   );
@@ -347,6 +355,102 @@ function SyncDebug({ sync, playback }: { sync: ReturnType<typeof useSyncPlan>; p
                 </li>
               ))}
             </ul>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function ZoomDebug({ zoom, plan, playback }: { zoom: ZoomDetectionState; plan: SyncPlan; playback: Playback }) {
+  const { detection, busy, error } = zoom;
+  const c = detection?.config;
+  const ranges = (z: { start: number }) => sourceToOutput(plan, z.start);
+  const sourceNow = outputToSource(plan, playback.currentTime);
+
+  return (
+    <section className="p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-[13px] font-medium">Zoom detection</h3>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={zoom.rerun} disabled={busy}>
+          {busy ? <Loader2 className="animate-spin" /> : <RotateCw />} Re-detect
+        </Button>
+      </div>
+      {c && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {[
+            `full-screen > ${c.maxCoverage * 100}% ignored`,
+            `busy cells > ${c.persistentShare * 100}% of ±${c.persistentWindow}s ignored`,
+            `box ≤ ${c.maxBoxShare * 100}% of screen`,
+            `≥ ${c.minEventPx} px changed`,
+          ].map((label) => (
+            <span key={label} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {error ? (
+        <p className="mt-3 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">{error}</p>
+      ) : !detection ? (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> Finding where the screen changes…
+        </div>
+      ) : (
+        <>
+          <label className="mt-3 flex cursor-pointer items-center justify-between rounded-lg bg-[#FAFAFB] px-3 py-2 text-xs">
+            <span>
+              <span className="font-medium">{detection.candidates.length} zoom candidates</span>
+              <span className="text-muted-foreground"> · outlined on the preview while they happen</span>
+            </span>
+            <Switch size="sm" checked={zoom.showBoxes} onCheckedChange={zoom.setShowBoxes} />
+          </label>
+          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+            Ignored: {detection.skipped.fullScreenFrames} full-screen frames (scroll / page load),{" "}
+            {detection.skipped.persistentCells} constantly changing cells (spinners / video), {detection.skipped.tooBig} events
+            too big, {detection.skipped.tooSmall + detection.skipped.tooFaint} too small or faint (cursor, hover).
+          </p>
+
+          {detection.candidates.length === 0 ? (
+            <p className="mt-3 text-xs text-muted-foreground">No localized changes found in this recording.</p>
+          ) : (
+            <table className="mt-3 w-full text-xs tabular-nums">
+              <thead>
+                <tr className="border-b text-left text-[11px] text-muted-foreground">
+                  <th className="py-1.5 pr-2 font-medium">At (video)</th>
+                  <th className="py-1.5 pr-2 font-medium">Source</th>
+                  <th className="py-1.5 pr-2 font-medium">Length</th>
+                  <th className="py-1.5 pr-2 font-medium">Box</th>
+                  <th className="py-1.5 font-medium">Strength</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detection.candidates.map((z) => {
+                  const removed = !plan.pieces.some((p) => z.end > p.sourceStart && z.start < p.sourceEnd);
+                  const active = sourceNow >= z.start - 0.2 && sourceNow <= z.end + 0.8;
+                  return (
+                    <tr
+                      key={z.id}
+                      onClick={() => playback.seek(ranges(z))}
+                      className={cn(
+                        "cursor-pointer border-b border-border/60 transition-colors hover:bg-[#FAFAFB]",
+                        active && "bg-brand/[0.06]",
+                        removed && "opacity-45",
+                      )}
+                    >
+                      <td className="py-1.5 pr-2 font-mono text-[11px]">{removed ? "cut" : formatTime(ranges(z))}</td>
+                      <td className="py-1.5 pr-2 font-mono text-[11px] text-muted-foreground">{z.start.toFixed(1)}s</td>
+                      <td className="py-1.5 pr-2">{(z.end - z.start).toFixed(1)}s</td>
+                      <td className="py-1.5 pr-2">
+                        {Math.round(z.w * 100)}×{Math.round(z.h * 100)}% <span className="text-muted-foreground">({Math.round(z.w * z.h * 100)}%)</span>
+                      </td>
+                      <td className="py-1.5">{z.changedPx.toLocaleString()} px</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </>
       )}
