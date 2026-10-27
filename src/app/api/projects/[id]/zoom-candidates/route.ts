@@ -1,17 +1,16 @@
-import fsp from "node:fs/promises";
-import { projectFile, readJson, readProject, writeJson } from "@/lib/projects";
-import { detectZoomCandidates } from "@/lib/zoom-detect";
-import type { Motion } from "@/lib/sync";
+import { readProject, writeJson } from "@/lib/projects";
+import { suggestZooms } from "@/lib/zoom-suggest";
 
-// Runs zoom detection on the saved frames (Step 6) and caches zoom-candidates.json. Local and fast.
+// Suggests zooms from narration + OCR (with screen changes as backup) and caches zoom-suggestions.json.
+// Takes a few seconds: one LLM call, a few OCR frames. The first run also compiles the OCR helper.
 export async function POST(_req: Request, ctx: RouteContext<"/api/projects/[id]/zoom-candidates">) {
   const { id } = await ctx.params;
   if (!(await readProject(id))) return Response.json({ error: "Project not found" }, { status: 404 });
-  const motion = await readJson<Motion>(id, "motion.json");
-  const raw = await fsp.readFile(projectFile(id, "frames.gray")).catch(() => null);
-  if (!motion || !raw) return Response.json({ error: "Analyze screen activity first (Debug → Re-analyze screen)" }, { status: 400 });
-
-  const detection = detectZoomCandidates(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength), motion);
-  await writeJson(id, "zoom-candidates.json", detection);
-  return Response.json(detection);
+  try {
+    const suggestions = await suggestZooms(id);
+    await writeJson(id, "zoom-suggestions.json", suggestions);
+    return Response.json(suggestions);
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : "Zoom detection failed" }, { status: 500 });
+  }
 }

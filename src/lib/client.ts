@@ -2,7 +2,7 @@
 
 import type { Project, Transcript, Visuals, VoiceSettings } from "./types";
 import type { Motion } from "./sync";
-import type { ZoomDetection } from "./zoom-detect";
+import type { ZoomSuggestions } from "./zoom-suggest";
 import type { VoiceOption } from "./elevenlabs";
 
 export const mediaUrl = (id: string, file: string) => `/api/projects/${id}/media/${file}`;
@@ -186,11 +186,11 @@ export const uploadBackground = (id: string, file: File) =>
 export const removeBackground = (id: string) =>
   fetch(`/api/projects/${id}/background`, { method: "DELETE" }).then((r) => json<Project>(r));
 
-/** Cached zoom detection, or a fresh run when there's none yet. */
-export async function fetchZoomCandidates(id: string, rerun = false): Promise<ZoomDetection> {
+/** Cached zoom suggestions, or a fresh run when there are none yet. */
+export async function fetchZoomCandidates(id: string, rerun = false): Promise<ZoomSuggestions> {
   if (!rerun) {
-    const cached = await fetch(mediaUrl(id, "zoom-candidates.json"), { cache: "no-store" });
+    const cached = await fetch(mediaUrl(id, "zoom-suggestions.json"), { cache: "no-store" });
     if (cached.ok) return cached.json();
   }
-  return fetch(`/api/projects/${id}/zoom-candidates`, { method: "POST" }).then((r) => json<ZoomDetection>(r));
+  return fetch(`/api/projects/${id}/zoom-candidates`, { method: "POST" }).then((r) => json<ZoomSuggestions>(r));
 }

@@ -45,3 +45,6 @@ next-env.d.ts
 
 # Remotion server-render bundle (rebuilt automatically)
 /.remotion-bundle/
+
+# compiled helpers (OCR)
+/.cache/
