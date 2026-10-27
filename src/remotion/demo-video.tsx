@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { AbsoluteFill, Freeze, Img, Sequence, useVideoConfig } from "remotion";
 import { Audio, Video } from "@remotion/media";
 import { pieceLength, type TimelinePiece } from "@/lib/sync";
-import { SHADOWS, type FrameProps } from "@/lib/visuals";
+import { recordingBox, SHADOWS, type FrameProps } from "@/lib/visuals";
 import { FPS } from "./constants";
 
 // The one composition used for both the editor preview (Remotion Player) and the export (Step 8).
@@ -25,16 +25,7 @@ export function DemoVideo({ videoSrc, pieces, voice, muteOriginal, frame }: Demo
   const { width, height } = useVideoConfig();
   const scale = height / 1080; // sizes are defined at 1080p
 
-  // Where the recording sits: centered, fitted inside the padding, keeping its aspect ratio.
-  let box = { left: 0, top: 0, width, height };
-  if (frame.framed) {
-    const pad = (frame.padding / 100) * height;
-    const availW = width - 2 * pad;
-    const availH = height - 2 * pad;
-    const w = Math.min(availW, availH * frame.recordingAspect);
-    const h = w / frame.recordingAspect;
-    box = { left: (width - w) / 2, top: (height - h) / 2, width: w, height: h };
-  }
+  const box = recordingBox(frame, width, height);
   const radius = frame.framed ? frame.radius * scale : 0;
   const shadow = frame.framed ? SHADOWS[frame.shadow] : null;
 

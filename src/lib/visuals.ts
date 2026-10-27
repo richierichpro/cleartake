@@ -75,3 +75,12 @@ export function frameProps(project: Project, imageUrl: (file: string) => string)
     recordingAspect: project.video.width / project.video.height || 16 / 9,
   };
 }
+
+/** Where the recording sits on a width×height canvas: centred inside the padding, keeping its aspect. */
+export function recordingBox(frame: FrameProps, width: number, height: number) {
+  if (!frame.framed) return { left: 0, top: 0, width, height };
+  const pad = (frame.padding / 100) * height;
+  const w = Math.min(width - 2 * pad, (height - 2 * pad) * frame.recordingAspect);
+  const h = w / frame.recordingAspect;
+  return { left: (width - w) / 2, top: (height - h) / 2, width: w, height: h };
+}
