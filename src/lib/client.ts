@@ -111,6 +111,13 @@ export async function rebuildSegments(id: string) {
   return body as Project;
 }
 
+export async function rewriteScript(id: string) {
+  const res = await fetch(`/api/projects/${id}/rewrite`, { method: "POST" });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? "Rewrite failed");
+  return body as Project;
+}
+
 export async function deleteProject(id: string) {
   const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not delete project");

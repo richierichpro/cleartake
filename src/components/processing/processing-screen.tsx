@@ -21,7 +21,7 @@ type StepState = "done" | "active" | "pending" | "error" | "later";
 const STEPS: { id: ProjectStatus | "uploading"; label: string; later?: boolean }[] = [
   { id: "uploading", label: "Uploading" },
   { id: "transcribing", label: "Transcribing" },
-  { id: "writing", label: "Writing script", later: true },
+  { id: "writing", label: "Writing script" },
   { id: "voicing", label: "Generating voice", later: true },
   { id: "ready", label: "Ready" },
 ];

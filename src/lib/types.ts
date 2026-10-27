@@ -32,6 +32,7 @@ export interface Project {
   stepStartedAt?: string; // ISO, when the current status began
   error?: { step: ProjectStatus; message: string } | null;
   segments?: Segment[]; // built from the transcript (Step 3); the script is edited here
+  rewrite?: { model: string; at: string; missing: number } | null; // last AI rewrite (Step 4)
 }
 
 // A paragraph of the script. Segments tile the whole video in source time:
@@ -45,7 +46,9 @@ export interface Segment {
   wordStart: number; // transcript.words indices [wordStart, wordEnd)
   wordEnd: number;
   originalText: string; // what was actually said
-  text: string; // the script text (rewrites and edits land here in later steps)
+  text: string; // the script text that gets narrated ("" = no narration)
+  aiText?: string; // the AI-polished version (Step 4), kept for "revert to AI version"
+  isRetake?: boolean; // AI flagged this paragraph as a mistake/retake; Step 6 cuts or speeds it
   breakReason: "pause" | "length" | "end"; // why the paragraph ended (debug)
   pauseAfter: number; // silence before the next paragraph's first word
 }
