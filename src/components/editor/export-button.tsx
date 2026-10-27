@@ -10,7 +10,13 @@ import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
 import type { ExportState, Project } from "@/lib/types";
-import { compositionSize } from "@/remotion/constants";
+import {
+  compositionSize,
+  DEFAULT_QUALITY,
+  estimateRenderSeconds,
+  EXPORT_QUALITIES,
+  type ExportQuality,
+} from "@/remotion/constants";
 
 const downloadUrl = (id: string) => `/api/projects/${id}/export/download`;
 
@@ -18,6 +24,8 @@ export function ExportButton({ project, duration }: { project: Project; duration
   const [state, setState] = useState<ExportState | null>(project.export ?? null);
   const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
+  // Defaults to the quality of the last export.
+  const [quality, setQuality] = useState<ExportQuality>(project.export?.quality ?? DEFAULT_QUALITY);
   const rendering = state?.status === "rendering";
   const wasRendering = useRef(false);
 
@@ -54,7 +62,11 @@ export function ExportButton({ project, duration }: { project: Project; duration
   async function start() {
     setStarting(true);
     try {
-      const res = await fetch(`/api/projects/${project.id}/export`, { method: "POST" });
+      const res = await fetch(`/api/projects/${project.id}/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quality }),
+      });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error);
       setState(body);
@@ -65,7 +77,6 @@ export function ExportButton({ project, duration }: { project: Project; duration
     }
   }
 
-  const size = compositionSize(project.video.width, project.video.height);
   const v = voiceOf(project);
   const silent =
     v.mode === "ai" ? (project.segments ?? []).filter((s) => ["none", "outdated"].includes(clipStatus(s, v))).length : 0;
@@ -92,7 +103,7 @@ export function ExportButton({ project, duration }: { project: Project; duration
         <div className="border-b p-4">
           <p className="text-sm font-medium">Export video</p>
           <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-            MP4 · H.264 · {size.width}×{size.height} · {formatTime(duration)}
+            MP4 · H.264 · {formatTime(duration)}
           </p>
         </div>
 
@@ -129,15 +140,19 @@ export function ExportButton({ project, duration }: { project: Project; duration
                   <CheckCircle2 className="size-4 text-emerald-600" />
                   <span className="font-medium">Ready</span>
                   <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                    {state.width ? `${state.width}×${state.height} · ` : ""}
                     {formatTime(state.duration ?? 0)} · {((state.size ?? 0) / 1e6).toFixed(1)} MB
                   </span>
                 </div>
                 <a href={downloadUrl(project.id)} className={buttonVariants({ size: "lg", className: "mt-3 w-full gap-2" })}>
                   <ArrowDownToLine /> Download
                 </a>
-                <Button variant="ghost" size="sm" className="mt-1.5 w-full gap-1.5 text-muted-foreground" onClick={start} disabled={starting}>
-                  <RotateCw /> Export again with latest edits
-                </Button>
+                <div className="mt-4 border-t pt-3">
+                  <QualityPicker project={project} duration={duration} value={quality} onChange={setQuality} />
+                  <Button variant="outline" size="sm" className="mt-2.5 w-full gap-1.5" onClick={start} disabled={starting}>
+                    <RotateCw /> Export again with latest edits
+                  </Button>
+                </div>
               </motion.div>
             ) : (
               <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -146,12 +161,13 @@ export function ExportButton({ project, duration }: { project: Project; duration
                     {state.error ?? "The last export failed."}
                   </p>
                 )}
-                <Button size="lg" className="w-full gap-2" onClick={start} disabled={starting}>
+                <QualityPicker project={project} duration={duration} value={quality} onChange={setQuality} />
+                <Button size="lg" className="mt-3 w-full gap-2" onClick={start} disabled={starting}>
                   {starting ? <Loader2 className="animate-spin" /> : <ArrowDownToLine />}
                   {state?.status === "error" ? "Try again" : "Export video"}
                 </Button>
-                <p className={cn("mt-2.5 text-xs leading-snug text-muted-foreground")}>
-                  Renders exactly what the preview shows. The first export takes a little longer.
+                <p className="mt-2.5 text-xs leading-snug text-muted-foreground">
+                  Renders exactly what the preview shows. Rendering uses all CPU cores, so your fan may spin up.
                 </p>
               </motion.div>
             )}
@@ -159,5 +175,59 @@ export function ExportButton({ project, duration }: { project: Project; duration
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function QualityPicker({
+  project,
+  duration,
+  value,
+  onChange,
+}: {
+  project: Project;
+  duration: number;
+  value: ExportQuality;
+  onChange: (q: ExportQuality) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label="Export quality" className="space-y-1">
+      {EXPORT_QUALITIES.filter((q, i) => {
+        // Hide options that give the same size as a smaller one (we never upscale).
+        const size = compositionSize(project.video.width, project.video.height, q.id);
+        const prev = i > 0 && compositionSize(project.video.width, project.video.height, EXPORT_QUALITIES[i - 1].id);
+        return !prev || prev.height !== size.height;
+      }).map((q) => {
+        const size = compositionSize(project.video.width, project.video.height, q.id);
+        const minutes = estimateRenderSeconds(duration, size) / 60;
+        const selected = q.id === value;
+        return (
+          <button
+            key={q.id}
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(q.id)}
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors duration-150",
+              selected ? "border-foreground bg-[#FAFAFB]" : "hover:bg-[#FAFAFB]",
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-3.5 shrink-0 items-center justify-center rounded-full border",
+                selected ? "border-foreground" : "border-muted-foreground/40",
+              )}
+            >
+              {selected && <span className="size-1.5 rounded-full bg-foreground" />}
+            </span>
+            <span className="text-[13px] font-medium">{q.label}</span>
+            <span className="text-xs text-muted-foreground">{q.hint}</span>
+            <span className="ml-auto text-right text-[11px] leading-tight text-muted-foreground tabular-nums">
+              {size.width}×{size.height}
+              <br />≈ {minutes < 1 ? "<1" : Math.round(minutes)} min
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

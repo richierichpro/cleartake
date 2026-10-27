@@ -62,6 +62,9 @@ try {
     outputLocation: outFile,
     inputProps,
     onProgress: ({ progress }) => send({ progress }),
+    // Screen recordings are mostly thin text: capture frames near-lossless and encode generously.
+    jpegQuality: 95,
+    crf: 16,
   });
   send({ done: true });
   process.exit(0);

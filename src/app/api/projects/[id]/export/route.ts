@@ -1,7 +1,8 @@
 import { isExporting, startExport } from "@/lib/export";
 import { mutateProject, readProject } from "@/lib/projects";
+import { EXPORT_QUALITIES, type ExportQuality } from "@/remotion/constants";
 
-// GET: current export state. POST: start a new export.
+// GET: current export state. POST { quality?: "1080p" | "1440p" | "original" }: start a new export.
 export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]/export">) {
   const { id } = await ctx.params;
   let project = await readProject(id);
@@ -17,8 +18,10 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]/e
 
 export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/export">) {
   const { id } = await ctx.params;
+  const body = (await req.json().catch(() => ({}))) as { quality?: string };
+  const quality = EXPORT_QUALITIES.some((q) => q.id === body.quality) ? (body.quality as ExportQuality) : undefined;
   try {
-    await startExport(id, new URL(req.url).origin);
+    await startExport(id, new URL(req.url).origin, quality);
     return Response.json((await readProject(id))?.export ?? null);
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : "Export failed to start" }, { status: 409 });

@@ -39,6 +39,9 @@ export interface Project {
 
 export interface ExportState {
   status: "rendering" | "done" | "error";
+  quality?: "1080p" | "1440p" | "original"; // resolution chosen for this export
+  width?: number;
+  height?: number;
   stage: string; // e.g. "Preparing renderer… 40%", "Rendering"
   progress: number; // 0–1 while rendering
   startedAt: string;

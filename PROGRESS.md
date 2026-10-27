@@ -57,7 +57,8 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
 - **The editor is in output (edited video) time**: player, control bar, timeline ruler and tracks, and Script paragraph timestamps. Segments/cuts stay stored in source time; convert with `sourceToOutput` / `outputToSource` / `segmentRanges` (lib/sync.ts). Until motion is analyzed, `identityPlan` plays the recording as-is.
 - Player: `controls={false}`, our control bar drives it via PlayerRef (`seekTo`, `play`, `pause`, `toggle`, `setVolume`, `mute`) and the `frameupdate` / `play` / `pause` / `ended` events (`use-playback.ts`). `moveToBeginningWhenEnded={false}`. Remotion prints a license note in the console (free for individuals / companies ≤ 3 people); `acknowledgeRemotionLicense` is left unset.
 - Export (Step 8): POST /export builds the same plan → `export-props.json` (absolute media URLs on the request origin) → spawns `node scripts/render.mjs` (separate process: Remotion's bundler can't run inside Next). The script bundles `src/remotion/index.ts` into `.remotion-bundle/` (rebuilt only when src/remotion or src/lib change; `@` alias added via webpackOverride), downloads Chrome Headless Shell on the first export, then `selectComposition` + `renderMedia` (h264). Progress lines `@@{json}` → `project.export`, throttled to every 2%. The previous export file is deleted on success. Download sets `Content-Disposition: {title}.mp4`.
-  - Speed: about 90s for a 19s video (2880×1800 source → 1728×1080) using all cores. Rendering makes the laptop fan spin.
+  - Quality choice in the Export panel: 1080p / 1440p (default) / Original, never upscaling; options with identical sizes are hidden. The last export's choice is remembered. The editor Player stays at 1080p. Encoding: `jpegQuality: 95`, `crf: 16` (screen text was soft with Remotion's defaults of 80 / 18).
+  - Speed: about 4.5s of render per output second at 1728×1080, scaling with pixel count (`estimateRenderSeconds`). It uses all cores, so the laptop fan spins. Benchmark hint: `concurrency: 4` was faster than 8 on this 8-core Mac (67s vs 81s); not applied yet.
   - The renderer serves its bundle on localhost:3001, so the media route sends CORS headers (+ OPTIONS). Without them, @remotion/media fell back to OffthreadVideo.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
@@ -122,7 +123,7 @@ src/
     format.ts                        formatTime, formatRelative, titleFromFileName
   remotion/
     demo-video.tsx                   DemoVideo composition (preview + export)
-    constants.ts                     FPS, compositionSize (no React; safe on the server)
+    constants.ts                     FPS, export qualities, compositionSize(w, h, quality), estimateRenderSeconds (no React; safe on the server)
     root.tsx / index.ts              Composition "DemoVideo" with calculateMetadata from props; registerRoot (render bundle entry)
 scripts/
   render.mjs                         export renderer (child process), reports "@@{json}" lines
@@ -184,7 +185,7 @@ data/projects/{id}/                  gitignored
 ```
 Also on project.json: `"voice": { "mode": "ai" | "original", "voiceId", "voiceName", "model" }` (Step 5; defaults to Matilda + eleven_flash_v2_5). A clip is **outdated** when its text, voiceId or model differs from the current values.
 
-`"export": { "status": "rendering" | "done" | "error", "stage", "progress": 0–1, "startedAt", "finishedAt", "file", "size", "duration", "error" }` (Step 8).
+`"export": { "status": "rendering" | "done" | "error", "quality": "1080p" | "1440p" | "original", "width", "height", "stage", "progress": 0–1, "startedAt", "finishedAt", "file", "size", "duration", "error" }` (Step 8).
 
 And `"rewrite": { "model": "gemma-4-31b", "at": "…", "missing": 0 }`, set after an AI rewrite. `missing` counts paragraphs the model skipped; those keep their original text.
 

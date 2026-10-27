@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { mutateProject, projectFile, readJson, readProject, writeJson } from "./projects";
 import { buildSyncPlan, identityPlan, type Motion } from "./sync";
 import { voiceOf } from "./voice-settings";
-import { compositionSize, FPS } from "@/remotion/constants";
+import { compositionSize, DEFAULT_QUALITY, FPS, type ExportQuality } from "@/remotion/constants";
 import type { RenderProps } from "@/remotion/root";
 import type { Transcript } from "./types";
 
@@ -14,7 +14,7 @@ const running = new Map<string, ChildProcess>();
 
 export const isExporting = (id: string) => running.has(id);
 
-export async function startExport(id: string, origin: string) {
+export async function startExport(id: string, origin: string, quality: ExportQuality = DEFAULT_QUALITY) {
   if (running.has(id)) throw new Error("An export is already running");
   const project = await readProject(id);
   if (!project) throw new Error("Project not found");
@@ -24,12 +24,13 @@ export async function startExport(id: string, origin: string) {
   const transcript = await readJson<Transcript>(id, "transcript.json");
   const plan = motion ? buildSyncPlan(project, transcript?.words ?? [], motion) : identityPlan(project);
   const media = (file: string) => `${origin}/api/projects/${id}/media/${file}`;
+  const size = compositionSize(project.video.width, project.video.height, quality);
   const props: RenderProps = {
     videoSrc: media(project.video.file),
     pieces: plan.pieces,
     voice: plan.voice.map((v) => ({ src: media(v.file), outputStart: v.outputStart, duration: v.duration })),
     muteOriginal: voiceOf(project).mode === "ai",
-    ...compositionSize(project.video.width, project.video.height),
+    ...size,
     durationInFrames: Math.max(1, Math.round(plan.outputDuration * FPS)),
   };
   await writeJson(id, "export-props.json", props);
@@ -37,7 +38,7 @@ export async function startExport(id: string, origin: string) {
   const file = `export-${Date.now()}.mp4`;
   const previous = project.export?.file;
   await mutateProject(id, (p) => {
-    p.export = { status: "rendering", stage: "Starting…", progress: 0, startedAt: new Date().toISOString() };
+    p.export = { status: "rendering", quality, ...size, stage: "Starting…", progress: 0, startedAt: new Date().toISOString() };
   });
 
   const child = spawn(process.execPath, ["scripts/render.mjs", projectFile(id, "export-props.json"), projectFile(id, file)], {
