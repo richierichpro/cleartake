@@ -150,7 +150,11 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments }: Props) {
                     key={seg.id}
                     className={cn(
                       "absolute flex h-8 items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-[11px] transition-colors duration-150",
-                      active ? "border-brand/50 bg-brand/[0.07] text-foreground" : "border-[#DCDCE1] bg-[#F3F3F5] text-muted-foreground",
+                      seg.isRetake
+                        ? "border-dashed bg-white text-muted-foreground/70"
+                        : active
+                          ? "border-brand/50 bg-brand/[0.07] text-foreground"
+                          : "border-[#DCDCE1] bg-[#F3F3F5] text-muted-foreground",
                     )}
                     style={{
                       top: VOICE_TOP,
@@ -160,7 +164,9 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments }: Props) {
                   >
                     <Mic className={cn("size-3 shrink-0", active && "text-brand")} />
                     <span className="shrink-0 font-medium">{i + 1}</span>
-                    <span className="truncate opacity-70">{(seg.speechEnd - seg.speechStart).toFixed(1)}s</span>
+                    <span className="truncate opacity-70">
+                      {seg.isRetake ? "retake" : `${(seg.speechEnd - seg.speechStart).toFixed(1)}s`}
+                    </span>
                   </div>
                 );
               })

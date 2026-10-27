@@ -5,8 +5,8 @@ import { motion } from "framer-motion";
 import { Bug, Loader2, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { rebuildSegments } from "@/lib/client";
-import { formatTime } from "@/lib/format";
+import { rebuildSegments, rewriteScript } from "@/lib/client";
+import { formatRelative, formatTime } from "@/lib/format";
 import { SEGMENT_CONFIG } from "@/lib/segments";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
@@ -42,6 +42,8 @@ export function DebugDrawer({
       </div>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <SegmentsDebug project={project} playback={playback} onChange={onChange} />
+        <div className="mx-4 border-t" />
+        <RewriteDebug project={project} onChange={onChange} />
       </div>
     </motion.aside>
   );
@@ -133,6 +135,74 @@ function SegmentsDebug({
           </tbody>
         </table>
       )}
+    </section>
+  );
+}
+
+const wordCount = (t: string) => (t.trim() ? t.trim().split(/\s+/).length : 0);
+
+function RewriteDebug({ project, onChange }: { project: Project; onChange: (p: Project) => void }) {
+  const [busy, setBusy] = useState(false);
+  const segments = project.segments ?? [];
+  const r = project.rewrite;
+
+  async function run() {
+    setBusy(true);
+    try {
+      onChange(await rewriteScript(project.id));
+      toast.success("Script rewritten");
+    } catch (err) {
+      toast.error("Rewrite failed", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-[13px] font-medium">Script rewrite</h3>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={run} disabled={busy || !segments.length}>
+          {busy ? <Loader2 className="animate-spin" /> : <RotateCw />} {r ? "Run again" : "Run"}
+        </Button>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {r ? (
+          <>
+            <span className="font-mono text-[11px]">{r.model}</span> · {formatRelative(r.at)}.
+            {r.missing > 0 && <span className="text-amber-600"> {r.missing} paragraph(s) skipped by the model.</span>}
+          </>
+        ) : (
+          "Not rewritten yet."
+        )}{" "}
+        Length changes beyond ±35% are flagged: they may not fit the video.
+      </p>
+
+      {r &&
+        segments.map((s, i) => {
+          const before = wordCount(s.originalText);
+          const after = wordCount(s.aiText ?? s.text);
+          const change = before ? Math.round(((after - before) / before) * 100) : 0;
+          const flagged = !s.isRetake && Math.abs(change) > 35;
+          return (
+            <div key={s.id} className="mt-3 rounded-lg border p-3">
+              <div className="mb-2 flex items-center gap-2 text-[11px]">
+                <span className="font-medium">#{i + 1}</span>
+                <span className="font-mono text-muted-foreground">{formatTime(s.start)}</span>
+                {s.isRetake && (
+                  <span className="rounded border border-dashed px-1.5 py-px font-medium text-muted-foreground">retake</span>
+                )}
+                <span className={cn("ml-auto tabular-nums", flagged ? "font-medium text-amber-600" : "text-muted-foreground")}>
+                  {before} → {after} words{!s.isRetake && ` (${change > 0 ? "+" : ""}${change}%)`}
+                </span>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">{s.originalText}</p>
+              <p className="mt-1.5 border-l-2 border-brand/50 pl-2 text-xs leading-relaxed">
+                {s.isRetake ? <em className="text-muted-foreground">No narration</em> : s.aiText}
+              </p>
+            </div>
+          );
+        })}
     </section>
   );
 }

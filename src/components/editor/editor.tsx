@@ -62,7 +62,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: (p: P
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
       <TopBar project={project} onChange={onChange} debugOpen={debugOpen} onToggleDebug={() => setDebugOpen((o) => !o)} />
       <div className="flex min-h-0 flex-1">
-        <LeftPanel content={{ script: <ScriptView project={project} playback={playback} /> }} />
+        <LeftPanel content={{ script: <ScriptView project={project} playback={playback} onChange={onChange} /> }} />
         <main className="relative flex min-w-0 flex-1 flex-col">
           <Preview
             src={mediaUrl(project.id, project.video.file)}
