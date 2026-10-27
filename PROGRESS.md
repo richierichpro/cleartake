@@ -41,14 +41,14 @@ src/
     projects/[id]/page.tsx           Editor route (Suspense → <Editor id>)
     projects/[id]/processing/page.tsx  Processing route
     api/projects/route.ts            GET list · POST upload (raw body streamed to disk)
-    api/projects/[id]/route.ts       GET project · PATCH {title}
+    api/projects/[id]/route.ts       GET project · PATCH {title} · DELETE (removes the folder; refused while processing)
     api/projects/[id]/thumbnail/route.ts   POST jpeg → thumb.jpg
     api/projects/[id]/process/route.ts     POST {keyterms} → starts/retries the pipeline
     api/projects/[id]/media/[file]/route.ts GET any project file, with HTTP Range support
   components/
     logo.tsx
     home/upload-zone.tsx             drag & drop, read metadata + thumbnail in the browser, XHR upload progress
-    home/project-grid.tsx            recent projects, skeletons, empty state
+    home/project-grid.tsx            recent projects (read from data/projects/), skeletons, empty state, hover trash → confirm dialog → delete
     processing/processing-screen.tsx animated step tracker, key terms entry, retry, auto-opens editor when ready
     processing/keyterms-input.tsx    chip input (Enter/comma adds, Backspace removes)
     editor/transcript-view.tsx       Script tab: raw transcript by sentence, timestamp click seeks, live word highlight, low-confidence words underlined
@@ -59,7 +59,7 @@ src/
     editor/preview.tsx               dot-grid canvas, aspect-fit framed <video>, play overlay, codec error state
     editor/control-bar.tsx           captions/cut (inactive placeholders), play, time, volume, timeline zoom
     editor/timeline.tsx              ruler (adaptive ticks), filmstrip video track, hover guide, draggable playhead, auto-follow
-    ui/                              shadcn: button, input, skeleton, slider, sonner, tooltip
+    ui/                              shadcn: alert-dialog, button, input, skeleton, slider, sonner, tooltip
   lib/
     types.ts                         Project types
     projects.ts                      server fs helpers (safe paths, atomic writes, mutateProject lock, read/writeJson)

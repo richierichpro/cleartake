@@ -1,4 +1,5 @@
-import { mutateProject, readProject } from "@/lib/projects";
+import fs from "node:fs/promises";
+import { mutateProject, projectDir, readProject } from "@/lib/projects";
 import { isRunning } from "@/lib/pipeline";
 
 const ACTIVE = ["transcribing", "writing", "voicing"];
@@ -28,4 +29,15 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     if (typeof body.title === "string" && body.title.trim()) p.title = body.title.trim().slice(0, 120);
   });
   return Response.json(project);
+}
+
+// Deletes the whole project folder (video, audio, transcript, everything).
+export async function DELETE(_req: Request, ctx: RouteContext<"/api/projects/[id]">) {
+  const { id } = await ctx.params;
+  if (!(await readProject(id))) return Response.json({ error: "Project not found" }, { status: 404 });
+  if (isRunning(id)) {
+    return Response.json({ error: "This project is still processing. Try again when it finishes." }, { status: 409 });
+  }
+  await fs.rm(projectDir(id), { recursive: true, force: true });
+  return Response.json({ ok: true });
 }

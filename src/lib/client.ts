@@ -108,3 +108,8 @@ export async function fetchTranscript(id: string): Promise<Transcript | null> {
   const res = await fetch(mediaUrl(id, "transcript.json"), { cache: "no-store" });
   return res.ok ? res.json() : null;
 }
+
+export async function deleteProject(id: string) {
+  const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not delete project");
+}
