@@ -7,9 +7,11 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 2 – Transcription
 - [x] Step 3 – Segments
 - [x] Step 4 – Script rewrite
-- [x] Step 5 – AI voice + script editing (awaiting "works")
+- [x] Step 5 – AI voice + script editing
 - [ ] Step 6 – Cleanup + sync plan
 - [ ] Steps 7–15
+- Open (Step 9): deleting a paragraph added with "+ Add" should merge it back into the previous one instead of becoming a cut.
+- Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
 
 Each step is committed separately on `main`, split into a few logical commits.
