@@ -60,7 +60,7 @@ export function TranscriptView({
       <div className="flex h-full flex-col items-center justify-center px-10 py-16 text-center">
         <p className="text-sm font-medium">No speech found</p>
         <p className="mt-1.5 max-w-64 text-sm text-muted-foreground">
-          We couldn&apos;t hear any narration in this recording.
+          We couldn&apos;t hear any narration in this recording. Check that your microphone was on when you recorded, then upload it again.
         </p>
       </div>
     );

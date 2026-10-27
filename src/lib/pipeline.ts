@@ -45,7 +45,13 @@ async function runPipeline(id: string) {
 
     // Script rewrite and voice generation plug in here in later steps.
     step = "ready";
-    await setStatus(id, step, `Transcribed ${transcript.words.length} words`);
+    await setStatus(
+      id,
+      step,
+      transcript.words.length
+        ? `Transcribed ${transcript.words.length} words`
+        : "No speech found. Was your microphone on while recording?",
+    );
   } catch (err) {
     await mutateProject(id, (p) => {
       p.status = "error";

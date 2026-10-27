@@ -70,10 +70,10 @@ export function ProcessingScreen({ id }: { id: string }) {
   }, [id, router, starting]);
 
   useEffect(() => {
-    if (project?.status !== "ready") return;
+    if (project?.status !== "ready" || project.statusDetail?.startsWith("No speech")) return;
     const t = setTimeout(() => router.push(`/projects/${id}`), 1400);
     return () => clearTimeout(t);
-  }, [project?.status, id, router]);
+  }, [project?.status, project?.statusDetail, id, router]);
 
   async function start() {
     setStarting(true);
@@ -142,7 +142,9 @@ export function ProcessingScreen({ id }: { id: string }) {
                             : state === "later"
                               ? "Not enabled yet"
                               : step.id === "ready" && state === "done"
-                                ? "Opening the editor…"
+                                ? project.statusDetail?.startsWith("No speech")
+                                  ? project.statusDetail
+                                  : "Opening the editor…"
                                 : undefined
                       }
                       elapsed={state === "active" ? elapsed : undefined}
