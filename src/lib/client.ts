@@ -1,6 +1,7 @@
 "use client";
 
-import type { Project, VoiceSettings } from "./types";
+import type { Project, Transcript, VoiceSettings } from "./types";
+import type { Motion } from "./sync";
 import type { VoiceOption } from "./elevenlabs";
 
 export const mediaUrl = (id: string, file: string) => `/api/projects/${id}/media/${file}`;
@@ -154,3 +155,14 @@ export const fetchVoices = () =>
   fetch("/api/voices").then((r) =>
     json<{ voices: VoiceOption[]; credits: { used: number; limit: number } | null }>(r),
   );
+
+/** Motion scores + transcript words for the sync plan; null when not analyzed/transcribed yet. */
+export async function fetchPlanInputs(id: string) {
+  const get = <T>(file: string) =>
+    fetch(mediaUrl(id, file), { cache: "no-store" }).then((r) => (r.ok ? (r.json() as Promise<T>) : null));
+  const [motion, transcript] = await Promise.all([get<Motion>("motion.json"), get<Transcript>("transcript.json")]);
+  return { motion, words: transcript?.words ?? [] };
+}
+
+export const analyzeActivity = (id: string) =>
+  fetch(`/api/projects/${id}/activity`, { method: "POST" }).then((r) => json<Motion>(r));

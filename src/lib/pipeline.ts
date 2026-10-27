@@ -3,6 +3,7 @@ import { uploadAudio, submitTranscript, waitForTranscript } from "./assemblyai";
 import { mutateProject, projectFile, readJson, readProject, writeJson } from "./projects";
 import { rewriteScript } from "./rewrite";
 import { buildSegments } from "./segments";
+import { analyzeActivity } from "./motion";
 import type { ProjectStatus, Transcript } from "./types";
 
 // Processing runs in the background inside the Next server process.
@@ -54,6 +55,11 @@ async function runPipeline(id: string) {
       await mutateProject(id, (p) => {
         p.segments = buildSegments(transcriptWords, p.video.duration);
       });
+    }
+
+    if (!(await readJson(id, "motion.json"))) {
+      await setStatus(id, step, "Analyzing screen activity…");
+      await analyzeActivity(id);
     }
 
     step = "writing";
