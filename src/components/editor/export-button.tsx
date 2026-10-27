@@ -10,6 +10,7 @@ import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { isSegmentRemoved } from "@/lib/edits";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
+import { isFramed, visualsOf } from "@/lib/visuals";
 import type { ExportState, Project } from "@/lib/types";
 import {
   compositionSize,
@@ -192,15 +193,16 @@ function QualityPicker({
   value: ExportQuality;
   onChange: (q: ExportQuality) => void;
 }) {
+  const framed = isFramed(visualsOf(project));
   return (
     <div role="radiogroup" aria-label="Export quality" className="space-y-1">
       {EXPORT_QUALITIES.filter((q, i) => {
         // Hide options that give the same size as a smaller one (we never upscale).
-        const size = compositionSize(project.video.width, project.video.height, q.id);
-        const prev = i > 0 && compositionSize(project.video.width, project.video.height, EXPORT_QUALITIES[i - 1].id);
+        const size = compositionSize(project.video.width, project.video.height, q.id, framed);
+        const prev = i > 0 && compositionSize(project.video.width, project.video.height, EXPORT_QUALITIES[i - 1].id, framed);
         return !prev || prev.height !== size.height;
       }).map((q) => {
-        const size = compositionSize(project.video.width, project.video.height, q.id);
+        const size = compositionSize(project.video.width, project.video.height, q.id, framed);
         const minutes = estimateRenderSeconds(duration, size) / 60;
         const selected = q.id === value;
         return (

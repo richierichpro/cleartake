@@ -12,8 +12,9 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 7 – Preview (Remotion)
 - [x] Step 8 – Export + download
 - [x] Step 9 – Trim and cut
-- [ ] Step 10 – Visuals tab (Background)
-- [ ] Steps 11–15
+- [x] Step 10 – Visuals tab (Background) (awaiting "works")
+- [ ] Step 11 – Music tab
+- [ ] Steps 12–15
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
 
@@ -63,6 +64,7 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
 - Trim & cut (Step 9): `project.cuts` / `trim` / `splits` in source time, saved via PATCH `{ edit }` (validated and clamped server-side) with optimistic local updates. `removedRanges()` (lib/edits.ts) = cuts + trim + legacy `deleted`; the plan subtracts them exactly (`subtractRanges`) after cleanup. A partial cut keeps the paragraph's voice and retimes the rest; a full cut removes the voice ("cut by you").
   - Timeline: S / ✂ splits at the playhead; click a piece between splits on the video track to select it; drag on the video track for a range; Delete/Backspace cuts; Esc clears. Ruler and other areas scrub. Trim handles on both ends (dragging only trims further; the ✂ marker restores). Splits used by a cut are removed automatically; clicking a split line removes it. User cuts/trims show orange ✂ markers (click = restore); cleanup cuts show grey notches.
   - Script delete = PATCH segment `{deleted: true}`: adds a Cut with `segmentId`, or merges a hand-added empty paragraph into the previous one. Restore removes that cut.
+- Visuals (Step 10): `project.visuals` (lib/visuals.ts: 8 CSS-gradient presets, SHADOWS in px at 1080p, defaults: background on, Aurora, medium shadow, 16px corners, 8% padding). Background on → **16:9 canvas** with the recording centred inside the padding (fit by aspect); off → the recording's own aspect, edge to edge. `frameProps()` → `DemoVideoProps.frame`; radius/shadow scale with canvas height/1080, so 1080p and 1440p exports look identical. A custom image is uploaded raw to POST /background → `background-{id}.{ext}` (replaces the preset; picking a preset clears it). Settings save debounced (300ms) with instant local preview. The Scenes sub-tab is a placeholder until Step 15.
 - Toasts are top-right under the top bar so they never cover the timeline.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
@@ -76,7 +78,7 @@ src/
     projects/[id]/page.tsx           Editor route (Suspense → <Editor id>)
     projects/[id]/processing/page.tsx  Processing route
     api/projects/route.ts            GET list · POST upload (raw body streamed to disk)
-    api/projects/[id]/route.ts       GET project · PATCH {title, voice} · DELETE (removes the folder; refused while processing)
+    api/projects/[id]/route.ts       GET project · PATCH {title, voice, edit, visuals} · DELETE (removes the folder; refused while processing)
     api/projects/[id]/thumbnail/route.ts   POST jpeg → thumb.jpg
     api/projects/[id]/process/route.ts     POST {keyterms} → starts/retries the pipeline
     api/projects/[id]/segments/route.ts    POST → rebuild segments from transcript.json
@@ -85,6 +87,7 @@ src/
     api/projects/[id]/segments/split/route.ts        POST {at} → "+ Add" paragraph at the playhead
     api/projects/[id]/voice/[segmentId]/route.ts     POST → generate (or reuse cached) AI clip for one paragraph
     api/voices/route.ts              GET → ElevenLabs voices + credits used
+    api/projects/[id]/background/route.ts    POST raw image → custom background · DELETE removes it
     api/projects/[id]/export/route.ts        GET export state (marks interrupted renders) · POST start export
     api/projects/[id]/export/download/route.ts  GET latest export as "{title}.mp4"
     api/projects/[id]/activity/route.ts      POST → sample frames, save motion.json + frames.gray
@@ -96,6 +99,7 @@ src/
     processing/processing-screen.tsx animated step tracker, key terms entry, retry, auto-opens editor when ready
     processing/keyterms-input.tsx    chip input (Enter/comma adds, Backspace removes)
     editor/script-view.tsx           Script tab: editable document, autosave, timestamp gutter (hover → Play; plays AI clip over the muted video), voice status dot (orange = outdated, hollow = none), voice vs video length with amber warning, hover actions (play, regenerate, show original, revert to AI, delete), "+ Add", "Generate N changed", Polish banner
+    editor/visuals-tab.tsx           Background / Scenes sub-tabs; on/off, 8 preset swatches (mini window preview, ✓), image upload/replace/remove, shadow select, corners + padding slider with number box
     editor/voice-tab.tsx             Use original voice toggle, voice dropdown (name + gender/accent/style, preview button), model, credits bar
     editor/debug-drawer.tsx          Debug drawer: Cleanup & sync (duration before → after, per-paragraph decisions, cleanup actions, Re-analyze); segmentation table + Rebuild; rewrite comparison + Run again
     editor/use-edits.ts              selection + split / cutSelection / restoreCut / setTrim, each with an Undo toast
@@ -126,6 +130,7 @@ src/
     ffmpeg.ts                        extractAudio (mono 16 kHz 64k MP3)
     client.ts                        browser helpers (mediaUrl, readVideoInfo, uploadVideo, updateProject)
     edits.ts                         (shared) removedRanges, subtractRanges, isSegmentRemoved, newCutId
+    visuals.ts                       (shared) presets, SHADOWS, DEFAULT_VISUALS, visualsOf, frameProps
     format.ts                        formatTime, formatRelative, titleFromFileName
   remotion/
     demo-video.tsx                   DemoVideo composition (preview + export)
@@ -142,6 +147,7 @@ data/projects/{id}/                  gitignored
   voice-{hash}.mp3 / .json           AI clips + ElevenLabs character alignment (Step 5)
   motion.json                        { fps: 5, width: 160, height, frames, scores[] } (Step 6)
   frames.gray                        raw 8-bit gray frames, frames × width × height (Step 6; Step 12 reuses)
+  background-{id}.{jpg|png|webp}     custom background image (Step 10)
   export-props.json                  inputProps of the last export (Step 8)
   export-{timestamp}.mp4             latest export (Step 8)
 ```
@@ -192,6 +198,8 @@ data/projects/{id}/                  gitignored
 Also on project.json: `"voice": { "mode": "ai" | "original", "voiceId", "voiceName", "model" }` (Step 5; defaults to Matilda + eleven_flash_v2_5). A clip is **outdated** when its text, voiceId or model differs from the current values.
 
 `"cuts": [{ "id", "start", "end", "segmentId"? }]`, `"trim": { "start", "end" }`, `"splits": [seconds]` (Step 9, source time).
+
+`"visuals": { "background": { "enabled", "preset", "image" }, "shadow": "none"|"light"|"medium"|"strong", "radius": px@1080p, "padding": % }` (Step 10).
 
 `"export": { "status": "rendering" | "done" | "error", "quality": "1080p" | "1440p" | "original", "width", "height", "stage", "progress": 0–1, "startedAt", "finishedAt", "file", "size", "duration", "error" }` (Step 8).
 

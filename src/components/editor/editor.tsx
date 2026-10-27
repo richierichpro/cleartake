@@ -16,6 +16,7 @@ import { LeftPanel } from "./left-panel";
 import { Preview } from "./preview";
 import { ScriptView } from "./script-view";
 import { VoiceTab } from "./voice-tab";
+import { VisualsTab } from "./visuals-tab";
 import { Timeline } from "./timeline";
 import { TopBar } from "./top-bar";
 import { usePlayback } from "./use-playback";
@@ -88,6 +89,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
         <LeftPanel
           content={{
             script: <ScriptView project={project} plan={plan} playback={playback} onChange={onChange} />,
+            visuals: <VisualsTab project={project} onChange={onChange} />,
             voice: (
               <VoiceTab project={project} onChange={onChange} volume={playback.muted ? 0 : playback.volume} />
             ),

@@ -7,6 +7,7 @@ import { Play, Sparkles, TriangleAlert } from "lucide-react";
 import { mediaUrl } from "@/lib/client";
 import { isSegmentRemoved } from "@/lib/edits";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
+import { frameProps } from "@/lib/visuals";
 import type { SyncPlan } from "@/lib/sync";
 import type { Project } from "@/lib/types";
 import { compositionSize, DemoVideo, FPS, type DemoVideoProps } from "@/remotion/demo-video";
@@ -18,7 +19,9 @@ export function Preview({ project, plan, playback }: { project: Project; plan: S
   const { attachPlayer, playing, toggle } = playback;
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const comp = compositionSize(project.video.width, project.video.height);
+  const frame = frameProps(project, (file) => mediaUrl(project.id, file));
+  const frameKey = JSON.stringify(frame); // stable key so the Player only re-renders when the frame changes
+  const comp = compositionSize(project.video.width, project.video.height, "1080p", frame.framed);
   const aspect = comp.width / comp.height;
 
   // Fit the frame inside the canvas while keeping the video's aspect ratio.
@@ -42,8 +45,9 @@ export function Preview({ project, plan, playback }: { project: Project; plan: S
       pieces: plan.pieces,
       voice: plan.voice.map((x) => ({ src: mediaUrl(project.id, x.file), outputStart: x.outputStart, duration: x.duration })),
       muteOriginal: v.mode === "ai",
+      frame: JSON.parse(frameKey),
     }),
-    [project.id, project.video.file, plan, v.mode],
+    [project.id, project.video.file, plan, v.mode, frameKey],
   );
 
   // Paragraphs that will play silently because their AI voice is missing or outdated.
