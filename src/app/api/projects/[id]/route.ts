@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import { mutateProject, projectDir, readProject } from "@/lib/projects";
 import { isRunning } from "@/lib/pipeline";
 import { voiceOf } from "@/lib/voice-settings";
-import type { Cut, Project, VoiceSettings } from "@/lib/types";
+import { BACKGROUND_PRESETS, PADDING_MAX, RADIUS_MAX, SHADOWS, visualsOf } from "@/lib/visuals";
+import type { Cut, Project, Visuals, VoiceSettings } from "@/lib/types";
 
 const ACTIVE = ["transcribing", "writing", "voicing"];
 
@@ -21,7 +22,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]">
   return Response.json(project);
 }
 
-// Editable project settings: title, voice, edit (cuts / trim / splits, Step 9).
+// Editable project settings: title, voice, edit (cuts / trim / splits, Step 9), visuals (Step 10).
 export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]">) {
   const { id } = await ctx.params;
   if (!(await readProject(id))) return Response.json({ error: "Project not found" }, { status: 404 });
@@ -30,10 +31,12 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     title?: string;
     voice?: Partial<VoiceSettings>;
     edit?: { cuts?: unknown; trim?: unknown; splits?: unknown };
+    visuals?: { background?: { enabled?: unknown; preset?: unknown }; shadow?: unknown; radius?: unknown; padding?: unknown };
   };
   const project = await mutateProject(id, (p) => {
     if (typeof body.title === "string" && body.title.trim()) p.title = body.title.trim().slice(0, 120);
     if (body.edit) applyEdit(p, body.edit);
+    if (body.visuals) applyVisuals(p, body.visuals);
     if (body.voice) {
       const { mode, voiceId, voiceName } = body.voice;
       p.voice = {
@@ -85,4 +88,23 @@ function applyEdit(p: Project, edit: { cuts?: unknown; trim?: unknown; splits?: 
   if (Array.isArray(edit.splits)) {
     p.splits = [...new Set(edit.splits.map(num).filter((t): t is number => t !== null && t > 0 && t < d))].sort((a, b) => a - b);
   }
+}
+
+/** Validates and merges visuals settings. The background image is set by the /background route. */
+function applyVisuals(
+  p: Project,
+  v: { background?: { enabled?: unknown; preset?: unknown }; shadow?: unknown; radius?: unknown; padding?: unknown },
+) {
+  const next = visualsOf(p);
+  if (typeof v.background?.enabled === "boolean") next.background.enabled = v.background.enabled;
+  if (BACKGROUND_PRESETS.some((b) => b.id === v.background?.preset)) {
+    next.background.preset = v.background!.preset as string;
+    next.background.image = null; // picking a preset replaces the uploaded image
+  }
+  if (typeof v.shadow === "string" && v.shadow in SHADOWS) next.shadow = v.shadow as Visuals["shadow"];
+  const radius = num(v.radius);
+  if (radius !== null) next.radius = Math.round(Math.max(0, Math.min(RADIUS_MAX, radius)));
+  const padding = num(v.padding);
+  if (padding !== null) next.padding = Math.round(Math.max(0, Math.min(PADDING_MAX, padding)));
+  p.visuals = next;
 }

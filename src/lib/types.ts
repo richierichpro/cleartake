@@ -39,6 +39,18 @@ export interface Project {
   cuts?: Cut[];
   trim?: { start: number; end: number }; // keep only [start, end) of the recording
   splits?: number[]; // split points made with S; they define clickable pieces on the timeline
+  visuals?: Visuals; // Step 10; DEFAULT_VISUALS when missing
+}
+
+export interface Visuals {
+  background: {
+    enabled: boolean; // off = export the recording edge to edge, no frame
+    preset: string; // BACKGROUND_PRESETS id, used when there's no image
+    image: string | null; // uploaded file in the project folder (wins over the preset)
+  };
+  shadow: "none" | "light" | "medium" | "strong";
+  radius: number; // corner radius in px at 1080p
+  padding: number; // % of the canvas on every side
 }
 
 export interface Cut {

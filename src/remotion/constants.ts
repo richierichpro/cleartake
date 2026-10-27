@@ -10,14 +10,15 @@ export const EXPORT_QUALITIES: { id: ExportQuality; label: string; hint: string 
 export const DEFAULT_QUALITY: ExportQuality = "1440p";
 
 /**
- * Output size: the recording's aspect ratio at the chosen height (even dimensions for H.264).
- * Never upscales beyond the recording. The editor preview uses 1080p.
+ * Output size at the chosen height (even dimensions for H.264), never taller than the recording.
+ * Framed (background on): a 16:9 canvas. Otherwise: the recording's own aspect ratio.
+ * The editor preview uses 1080p.
  */
-export function compositionSize(width: number, height: number, quality: ExportQuality = "1080p") {
+export function compositionSize(width: number, height: number, quality: ExportQuality = "1080p", framed = false) {
   const target = quality === "original" ? height : Math.min(height || 1080, quality === "1440p" ? 1440 : 1080);
   const h = Math.round(target / 2) * 2 || 1080;
-  const w = Math.round((h * (width / height || 16 / 9)) / 2) * 2;
-  return { width: w, height: h };
+  const aspect = framed ? 16 / 9 : width / height || 16 / 9;
+  return { width: Math.round((h * aspect) / 2) * 2, height: h };
 }
 
 /** Rough render time: ~4.5s per output second at 1728×1080 on an 8-core laptop, scaling with pixel count. */

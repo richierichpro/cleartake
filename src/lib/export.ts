@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import { mutateProject, projectFile, readJson, readProject, writeJson } from "./projects";
 import { buildSyncPlan, identityPlan, type Motion } from "./sync";
 import { voiceOf } from "./voice-settings";
+import { frameProps } from "./visuals";
 import { compositionSize, DEFAULT_QUALITY, FPS, type ExportQuality } from "@/remotion/constants";
 import type { RenderProps } from "@/remotion/root";
 import type { Transcript } from "./types";
@@ -24,12 +25,14 @@ export async function startExport(id: string, origin: string, quality: ExportQua
   const transcript = await readJson<Transcript>(id, "transcript.json");
   const plan = motion ? buildSyncPlan(project, transcript?.words ?? [], motion) : identityPlan(project);
   const media = (file: string) => `${origin}/api/projects/${id}/media/${file}`;
-  const size = compositionSize(project.video.width, project.video.height, quality);
+  const frame = frameProps(project, media);
+  const size = compositionSize(project.video.width, project.video.height, quality, frame.framed);
   const props: RenderProps = {
     videoSrc: media(project.video.file),
     pieces: plan.pieces,
     voice: plan.voice.map((v) => ({ src: media(v.file), outputStart: v.outputStart, duration: v.duration })),
     muteOriginal: voiceOf(project).mode === "ai",
+    frame,
     ...size,
     durationInFrames: Math.max(1, Math.round(plan.outputDuration * FPS)),
   };

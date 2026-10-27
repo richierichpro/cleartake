@@ -1,6 +1,6 @@
 "use client";
 
-import type { Project, Transcript, VoiceSettings } from "./types";
+import type { Project, Transcript, Visuals, VoiceSettings } from "./types";
 import type { Motion } from "./sync";
 import type { VoiceOption } from "./elevenlabs";
 
@@ -91,6 +91,12 @@ export async function updateProject(
     title?: string;
     voice?: Partial<Pick<VoiceSettings, "mode" | "voiceId" | "voiceName">>;
     edit?: { cuts?: Project["cuts"]; trim?: Project["trim"] | null; splits?: number[] };
+    visuals?: {
+      background?: { enabled?: boolean; preset?: string };
+      shadow?: Visuals["shadow"];
+      radius?: number;
+      padding?: number;
+    };
   },
 ) {
   const res = await fetch(`/api/projects/${id}`, {
@@ -170,3 +176,11 @@ export async function fetchPlanInputs(id: string) {
 
 export const analyzeActivity = (id: string) =>
   fetch(`/api/projects/${id}/activity`, { method: "POST" }).then((r) => json<Motion>(r));
+
+export const uploadBackground = (id: string, file: File) =>
+  fetch(`/api/projects/${id}/background`, { method: "POST", headers: { "Content-Type": file.type }, body: file }).then((r) =>
+    json<Project>(r),
+  );
+
+export const removeBackground = (id: string) =>
+  fetch(`/api/projects/${id}/background`, { method: "DELETE" }).then((r) => json<Project>(r));

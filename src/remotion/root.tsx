@@ -21,7 +21,16 @@ export function RemotionRoot() {
       component={RenderedVideo}
       fps={FPS}
       calculateMetadata={calculateMetadata}
-      defaultProps={{ videoSrc: "", pieces: [], voice: [], muteOriginal: true, width: 1920, height: 1080, durationInFrames: 1 }}
+      defaultProps={{
+        videoSrc: "",
+        pieces: [],
+        voice: [],
+        muteOriginal: true,
+        frame: { framed: false, background: "#000", image: null, shadow: "none", radius: 0, padding: 0, recordingAspect: 16 / 9 },
+        width: 1920,
+        height: 1080,
+        durationInFrames: 1,
+      }}
     />
   );
 }
