@@ -34,6 +34,19 @@ export interface Project {
   segments?: Segment[]; // built from the transcript (Step 3); the script is edited here
   rewrite?: { model: string; at: string; missing: number } | null; // last AI rewrite (Step 4)
   voice?: VoiceSettings; // Step 5; DEFAULT_VOICE when missing
+  export?: ExportState; // last export (Step 8)
+}
+
+export interface ExportState {
+  status: "rendering" | "done" | "error";
+  stage: string; // e.g. "Preparing renderer… 40%", "Rendering"
+  progress: number; // 0–1 while rendering
+  startedAt: string;
+  finishedAt?: string;
+  file?: string; // export-{timestamp}.mp4 in the project folder
+  size?: number; // bytes
+  duration?: number; // seconds
+  error?: string;
 }
 
 export interface VoiceSettings {

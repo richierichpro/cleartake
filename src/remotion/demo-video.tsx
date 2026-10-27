@@ -2,11 +2,12 @@ import { Fragment } from "react";
 import { AbsoluteFill, Freeze, Sequence } from "remotion";
 import { Audio, Video } from "@remotion/media";
 import { pieceLength, type TimelinePiece } from "@/lib/sync";
+import { FPS } from "./constants";
 
 // The one composition used for both the editor preview (Remotion Player) and the export (Step 8).
 // It only renders what it's given: no decisions are made here.
 
-export const FPS = 30;
+export { FPS, compositionSize } from "./constants";
 
 // A type alias (not an interface) so it satisfies Remotion's Record<string, unknown> props constraint.
 export type DemoVideoProps = {
@@ -63,11 +64,4 @@ export function DemoVideo({ videoSrc, pieces, voice, muteOriginal }: DemoVideoPr
       ))}
     </AbsoluteFill>
   );
-}
-
-/** Output size: the recording's aspect ratio at 1080p (even dimensions for H.264). */
-export function compositionSize(width: number, height: number) {
-  const h = 1080;
-  const w = Math.round((h * (width / height || 16 / 9)) / 2) * 2;
-  return { width: w, height: h };
 }

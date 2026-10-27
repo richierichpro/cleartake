@@ -42,3 +42,6 @@ next-env.d.ts
 
 # project data (uploaded videos, generated audio, exports)
 /data/
+
+# Remotion server-render bundle (rebuilt automatically)
+/.remotion-bundle/
