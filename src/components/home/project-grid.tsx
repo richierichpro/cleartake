@@ -9,6 +9,15 @@ import { mediaUrl } from "@/lib/client";
 import { formatRelative, formatTime } from "@/lib/format";
 import type { Project } from "@/lib/types";
 
+const STATUS_LABEL: Record<Project["status"], string> = {
+  uploaded: "Not processed yet",
+  transcribing: "Transcribing…",
+  writing: "Writing script…",
+  voicing: "Generating voice…",
+  ready: "Ready",
+  error: "Processing failed",
+};
+
 export function ProjectGrid() {
   const [projects, setProjects] = useState<Project[] | null>(null);
 
@@ -67,7 +76,10 @@ function Grid({ children }: { children: React.ReactNode }) {
 
 function ProjectCard({ project }: { project: Project }) {
   return (
-    <Link href={`/projects/${project.id}`} className="group block outline-none">
+    <Link
+      href={project.status === "ready" ? `/projects/${project.id}` : `/projects/${project.id}/processing`}
+      className="group block outline-none"
+    >
       <div className="relative aspect-video overflow-hidden rounded-xl border bg-muted transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-[#D4D4DA] group-hover:shadow-[0_8px_24px_-12px_rgba(17,17,19,0.25)] group-focus-visible:ring-3 group-focus-visible:ring-ring/50">
         {project.thumbnail ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -87,7 +99,9 @@ function ProjectCard({ project }: { project: Project }) {
         </span>
       </div>
       <p className="mt-3 truncate text-sm font-medium">{project.title}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">Edited {formatRelative(project.updatedAt)}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        {project.status === "ready" ? `Edited ${formatRelative(project.updatedAt)}` : STATUS_LABEL[project.status]}
+      </p>
     </Link>
   );
 }

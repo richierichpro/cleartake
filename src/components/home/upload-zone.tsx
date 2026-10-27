@@ -32,9 +32,9 @@ export function UploadZone() {
       step("Reading video…", 0);
       const info = await readVideoInfo(file);
       const project = await uploadVideo(file, info, (p) => step(`Uploading ${Math.round(p * 100)}%`, p));
-      step("Preparing editor…", 1);
+      step("Almost there…", 1);
       if (info.thumbnail) await uploadThumbnail(project.id, info.thumbnail);
-      router.push(`/projects/${project.id}`);
+      router.push(`/projects/${project.id}/processing`);
     } catch (err) {
       setPhase({ kind: "idle" });
       toast.error("Upload failed", { description: err instanceof Error ? err.message : undefined });

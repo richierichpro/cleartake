@@ -1,6 +1,6 @@
 "use client";
 
-import type { Project } from "./types";
+import type { Project, Transcript } from "./types";
 
 export const mediaUrl = (id: string, file: string) => `/api/projects/${id}/media/${file}`;
 
@@ -91,4 +91,20 @@ export async function updateProject(id: string, patch: Partial<Pick<Project, "ti
   });
   if (!res.ok) throw new Error("Could not save");
   return (await res.json()) as Project;
+}
+
+export async function startProcessing(id: string, keyterms: string[]) {
+  const res = await fetch(`/api/projects/${id}/process`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keyterms }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? "Could not start processing");
+  return body as Project;
+}
+
+export async function fetchTranscript(id: string): Promise<Transcript | null> {
+  const res = await fetch(mediaUrl(id, "transcript.json"), { cache: "no-store" });
+  return res.ok ? res.json() : null;
 }
