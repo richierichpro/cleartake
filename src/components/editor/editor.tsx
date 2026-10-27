@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { FileQuestion } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { mediaUrl, rebuildSegments } from "@/lib/client";
+import { voiceOf } from "@/lib/voice-settings";
 import type { Project } from "@/lib/types";
 import { ControlBar, ZOOM_LEVELS } from "./control-bar";
 import { DebugDrawer } from "./debug-drawer";
 import { LeftPanel } from "./left-panel";
 import { Preview } from "./preview";
 import { ScriptView } from "./script-view";
+import { VoiceTab } from "./voice-tab";
 import { Timeline } from "./timeline";
 import { TopBar } from "./top-bar";
 import { usePlayback } from "./use-playback";
@@ -27,12 +29,20 @@ export function Editor({ id }: { id: string }) {
       .catch(() => setProject("missing"));
   }, [id]);
 
+  // Accepts a project or an updater, like setState.
+  const update: ProjectUpdate = useCallback(
+    (next) => setProject((prev) => (typeof next === "function" ? next(prev as Project) : next)),
+    [],
+  );
+
   if (project === null) return <EditorSkeleton />;
   if (project === "missing") return <ProjectMissing />;
-  return <EditorLoaded project={project} onChange={setProject} />;
+  return <EditorLoaded project={project} onChange={update} />;
 }
 
-function EditorLoaded({ project, onChange }: { project: Project; onChange: (p: Project) => void }) {
+export type ProjectUpdate = (next: Project | ((prev: Project) => Project)) => void;
+
+function EditorLoaded({ project, onChange }: { project: Project; onChange: ProjectUpdate }) {
   const playback = usePlayback(project.video.duration);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -62,7 +72,12 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: (p: P
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
       <TopBar project={project} onChange={onChange} debugOpen={debugOpen} onToggleDebug={() => setDebugOpen((o) => !o)} />
       <div className="flex min-h-0 flex-1">
-        <LeftPanel content={{ script: <ScriptView project={project} playback={playback} onChange={onChange} /> }} />
+        <LeftPanel
+          content={{
+            script: <ScriptView project={project} playback={playback} onChange={onChange} />,
+            voice: <VoiceTab project={project} onChange={onChange} />,
+          }}
+        />
         <main className="relative flex min-w-0 flex-1 flex-col">
           <Preview
             src={mediaUrl(project.id, project.video.file)}
@@ -75,6 +90,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: (p: P
             zoom={ZOOM_LEVELS[zoomIndex]}
             thumbnailUrl={project.thumbnail ? mediaUrl(project.id, project.thumbnail) : null}
             segments={project.segments}
+            voice={voiceOf(project)}
           />
           <AnimatePresence>
             {debugOpen && (

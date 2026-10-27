@@ -140,7 +140,7 @@ export function ProcessingScreen({ id }: { id: string }) {
                           : state === "error"
                             ? project.error?.message
                             : state === "later"
-                              ? "Not enabled yet"
+                              ? "You'll pick a voice in the editor"
                               : step.id === "ready" && state === "done"
                                 ? project.statusDetail?.startsWith("No speech")
                                   ? project.statusDetail

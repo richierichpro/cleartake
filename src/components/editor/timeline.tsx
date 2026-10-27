@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Film, Mic } from "lucide-react";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Segment } from "@/lib/types";
+import { clipStatus, estimateSeconds } from "@/lib/voice-settings";
+import type { Segment, VoiceSettings } from "@/lib/types";
 import type { Playback } from "./use-playback";
 
 const PAD = 16; // horizontal breathing room so 0:00 and the end aren't glued to the edges
@@ -22,9 +23,10 @@ interface Props {
   zoom: number;
   thumbnailUrl: string | null;
   segments: Segment[] | undefined;
+  voice: VoiceSettings;
 }
 
-export function Timeline({ playback, zoom, thumbnailUrl, segments }: Props) {
+export function Timeline({ playback, zoom, thumbnailUrl, segments, voice }: Props) {
   const { currentTime, playing, seek } = playback;
   const duration = playback.duration || 1;
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -114,7 +116,7 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments }: Props) {
               return (
                 <div
                   key={seg?.id ?? "all"}
-                  className="absolute h-14 overflow-hidden rounded-lg border bg-muted"
+                  className={cn("absolute h-14 overflow-hidden rounded-lg border bg-muted transition-opacity", seg?.deleted && "opacity-30")}
                   style={{
                     top: VIDEO_TOP,
                     left: xOf(from) + (split ? 1 : 0),
@@ -141,31 +143,44 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments }: Props) {
               );
             })}
 
-            {/* Voice track: only where there's narration, silence stays empty */}
+            {/* Voice track: only where there's narration, silence stays empty.
+                With an AI clip, the block shows the clip's real length (amber if it overruns its paragraph). */}
             {segments?.length ? (
               segments.map((seg, i) => {
-                const active = currentTime >= seg.speechStart && currentTime < seg.speechEnd;
+                if (seg.deleted) return null;
+                const status = voice.mode === "ai" ? clipStatus(seg, voice) : "original";
+                if (status === "empty" && !seg.isRetake) return null;
+                const useClip = status === "current" || status === "outdated";
+                const from = seg.speechStart;
+                // Paragraphs added by hand have no recorded speech: show their estimated length.
+                const len = useClip
+                  ? seg.voice!.duration
+                  : Math.max(seg.speechEnd - seg.speechStart, status === "none" ? estimateSeconds(seg.text) : 0);
+                const overruns = useClip && from + len > seg.end;
+                const active = currentTime >= from && currentTime < from + len;
                 return (
                   <div
                     key={seg.id}
                     className={cn(
                       "absolute flex h-8 items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-[11px] transition-colors duration-150",
-                      seg.isRetake
+                      seg.isRetake || status === "none"
                         ? "border-dashed bg-white text-muted-foreground/70"
-                        : active
-                          ? "border-brand/50 bg-brand/[0.07] text-foreground"
-                          : "border-[#DCDCE1] bg-[#F3F3F5] text-muted-foreground",
+                        : overruns
+                          ? "border-amber-400 bg-amber-50 text-amber-700"
+                          : active
+                            ? "border-brand/50 bg-brand/[0.07] text-foreground"
+                            : "border-[#DCDCE1] bg-[#F3F3F5] text-muted-foreground",
                     )}
-                    style={{
-                      top: VOICE_TOP,
-                      left: xOf(seg.speechStart),
-                      width: Math.max(4, (seg.speechEnd - seg.speechStart) * pps),
-                    }}
+                    style={{ top: VOICE_TOP, left: xOf(from), width: Math.max(4, len * pps) }}
                   >
-                    <Mic className={cn("size-3 shrink-0", active && "text-brand")} />
+                    {status === "outdated" ? (
+                      <span className="size-1.5 shrink-0 rounded-full bg-brand" />
+                    ) : (
+                      <Mic className={cn("size-3 shrink-0", active && "text-brand")} />
+                    )}
                     <span className="shrink-0 font-medium">{i + 1}</span>
                     <span className="truncate opacity-70">
-                      {seg.isRetake ? "retake" : `${(seg.speechEnd - seg.speechStart).toFixed(1)}s`}
+                      {seg.isRetake ? "retake" : status === "none" ? "no voice yet" : `${len.toFixed(1)}s`}
                     </span>
                   </div>
                 );

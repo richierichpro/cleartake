@@ -12,6 +12,13 @@ export function usePlayback(initialDuration: number) {
   const [volume, setVolumeState] = useState(1);
   const [muted, setMutedState] = useState(false);
   const stopAt = useRef<number | null>(null); // set by playRange
+  const restoreMuted = useRef<boolean | null>(null); // playRange can mute the recording while an AI clip plays
+
+  const endRange = useCallback(() => {
+    stopAt.current = null;
+    if (restoreMuted.current !== null && videoRef.current) videoRef.current.muted = restoreMuted.current;
+    restoreMuted.current = null;
+  }, []);
 
   // Smooth playhead: timeupdate only fires ~4x/s, so poll on animation frames while playing.
   useEffect(() => {
@@ -21,42 +28,46 @@ export function usePlayback(initialDuration: number) {
       const v = videoRef.current;
       if (v && stopAt.current !== null && v.currentTime >= stopAt.current) {
         v.pause();
-        stopAt.current = null;
+        endRange();
       }
       if (v) setCurrentTime(v.currentTime);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing]);
+  }, [playing, endRange]);
 
   const seek = useCallback(
     (t: number) => {
-      stopAt.current = null;
+      endRange();
       const clamped = Math.max(0, Math.min(t, duration || 0));
       if (videoRef.current) videoRef.current.currentTime = clamped;
       setCurrentTime(clamped);
     },
-    [duration],
+    [duration, endRange],
   );
 
   const toggle = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
-    stopAt.current = null;
+    endRange();
     if (v.paused) {
       if (v.ended || v.currentTime >= (duration || v.duration) - 0.05) v.currentTime = 0;
       v.play().catch(() => {});
     } else v.pause();
-  }, [duration]);
+  }, [duration, endRange]);
 
-  /** Plays [start, end) and pauses at the end. */
+  /** Plays [start, end) and pauses at the end. `muted` silences the recording for that range only. */
   const playRange = useCallback(
-    (start: number, end: number) => {
+    (start: number, end: number, opts: { muted?: boolean } = {}) => {
       const v = videoRef.current;
       if (!v) return;
       seek(start);
       stopAt.current = end;
+      if (opts.muted) {
+        restoreMuted.current = v.muted;
+        v.muted = true;
+      }
       v.play().catch(() => {});
     },
     [seek],
