@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchZoomCandidates } from "@/lib/client";
-import type { ZoomDetection } from "@/lib/zoom-detect";
+import type { ZoomSuggestions } from "@/lib/zoom-suggest";
 
-// Step 12 (debug only): loads cached zoom candidates the first time the Debug drawer opens.
+// Step 12 (debug only): loads cached zoom suggestions the first time the Debug drawer opens.
 export function useZoomDetection(projectId: string, enabled: boolean) {
-  const [detection, setDetection] = useState<ZoomDetection | null>(null);
+  const [detection, setDetection] = useState<ZoomSuggestions | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showBoxes, setShowBoxes] = useState(true);

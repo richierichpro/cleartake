@@ -12,6 +12,7 @@ import { outputToSource, sourceToOutput, SYNC_CONFIG, type CleanupAction, type S
 import { ACTION_COLOR, STATE_COLOR } from "./timeline";
 import type { useSyncPlan } from "./use-sync-plan";
 import type { ZoomDetectionState } from "./use-zoom-detection";
+import type { Mention } from "@/lib/zoom-suggest";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
@@ -362,98 +363,122 @@ function SyncDebug({ sync, playback }: { sync: ReturnType<typeof useSyncPlan>; p
   );
 }
 
+const MENTION_STATUS: Record<Mention["status"], string> = {
+  zoom: "zoom",
+  "not-spoken": "not found in the transcript",
+  "not-on-screen": "not visible on screen",
+  "too-close": "skipped: within 3s of another zoom",
+};
+
 function ZoomDebug({ zoom, plan, playback }: { zoom: ZoomDetectionState; plan: SyncPlan; playback: Playback }) {
   const { detection, busy, error } = zoom;
-  const c = detection?.config;
-  const ranges = (z: { start: number }) => sourceToOutput(plan, z.start);
+  const at = (t: number) => sourceToOutput(plan, t);
   const sourceNow = outputToSource(plan, playback.currentTime);
+  const removed = (t: number) => !plan.pieces.some((p) => t >= p.sourceStart && t < p.sourceEnd);
 
   return (
     <section className="p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-[13px] font-medium">Zoom detection</h3>
+        <h3 className="text-[13px] font-medium">Zoom suggestions</h3>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={zoom.rerun} disabled={busy}>
           {busy ? <Loader2 className="animate-spin" /> : <RotateCw />} Re-detect
         </Button>
       </div>
-      {c && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {[
-            `full-screen > ${c.maxCoverage * 100}% ignored`,
-            `busy cells > ${c.persistentShare * 100}% of ±${c.persistentWindow}s ignored`,
-            `box ≤ ${c.maxBoxShare * 100}% of screen`,
-            `≥ ${c.minEventPx} px changed`,
-          ].map((label) => (
-            <span key={label} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">
-              {label}
-            </span>
-          ))}
-        </div>
-      )}
+      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+        Zooms where you name something on screen: the AI finds what you mention, the transcript says when, OCR finds where.
+        Typing in a field is a backup signal.
+      </p>
 
       {error ? (
         <p className="mt-3 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">{error}</p>
-      ) : !detection ? (
+      ) : !detection || busy ? (
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" /> Finding where the screen changes…
+          <Loader2 className="size-3.5 animate-spin" /> Reading your narration and the screen… (the first run also builds the OCR
+          helper)
         </div>
       ) : (
         <>
           <label className="mt-3 flex cursor-pointer items-center justify-between rounded-lg bg-[#FAFAFB] px-3 py-2 text-xs">
             <span>
-              <span className="font-medium">{detection.candidates.length} zoom candidates</span>
+              <span className="font-medium">{detection.candidates.length} suggested zooms</span>
               <span className="text-muted-foreground"> · outlined on the preview while they happen</span>
             </span>
             <Switch size="sm" checked={zoom.showBoxes} onCheckedChange={zoom.setShowBoxes} />
           </label>
-          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-            Ignored: {detection.skipped.fullScreenFrames} full-screen frames (scroll / page load),{" "}
-            {detection.skipped.persistentCells} constantly changing cells (spinners / video), {detection.skipped.tooBig} events
-            too big, {detection.skipped.tooSmall + detection.skipped.tooFaint} too small or faint (cursor, hover).
-          </p>
 
-          {detection.candidates.length === 0 ? (
-            <p className="mt-3 text-xs text-muted-foreground">No localized changes found in this recording.</p>
-          ) : (
+          {detection.candidates.length > 0 && (
             <table className="mt-3 w-full text-xs tabular-nums">
               <thead>
                 <tr className="border-b text-left text-[11px] text-muted-foreground">
-                  <th className="py-1.5 pr-2 font-medium">At (video)</th>
-                  <th className="py-1.5 pr-2 font-medium">Source</th>
-                  <th className="py-1.5 pr-2 font-medium">Length</th>
-                  <th className="py-1.5 pr-2 font-medium">Box</th>
-                  <th className="py-1.5 font-medium">Strength</th>
+                  <th className="py-1.5 pr-2 font-medium">At</th>
+                  <th className="py-1.5 pr-2 font-medium">Why</th>
+                  <th className="py-1.5 font-medium">Box</th>
                 </tr>
               </thead>
               <tbody>
                 {detection.candidates.map((z) => {
-                  const removed = !plan.pieces.some((p) => z.end > p.sourceStart && z.start < p.sourceEnd);
+                  const cut = removed(z.start + 0.5);
                   const active = sourceNow >= z.start - 0.2 && sourceNow <= z.end + 0.8;
                   return (
                     <tr
                       key={z.id}
-                      onClick={() => playback.seek(ranges(z))}
+                      onClick={() => playback.seek(at(z.start))}
                       className={cn(
-                        "cursor-pointer border-b border-border/60 transition-colors hover:bg-[#FAFAFB]",
+                        "cursor-pointer border-b border-border/60 align-top transition-colors hover:bg-[#FAFAFB]",
                         active && "bg-brand/[0.06]",
-                        removed && "opacity-45",
+                        cut && "opacity-45",
                       )}
                     >
-                      <td className="py-1.5 pr-2 font-mono text-[11px]">{removed ? "cut" : formatTime(ranges(z))}</td>
-                      <td className="py-1.5 pr-2 font-mono text-[11px] text-muted-foreground">{z.start.toFixed(1)}s</td>
-                      <td className="py-1.5 pr-2">{(z.end - z.start).toFixed(1)}s</td>
+                      <td className="py-1.5 pr-2 font-mono text-[11px]">{cut ? "cut" : formatTime(at(z.start))}</td>
                       <td className="py-1.5 pr-2">
-                        {Math.round(z.w * 100)}×{Math.round(z.h * 100)}% <span className="text-muted-foreground">({Math.round(z.w * z.h * 100)}%)</span>
+                        {z.reason === "narration" ? (
+                          <>
+                            You said <span className="font-medium">&ldquo;{z.phrase}&rdquo;</span>
+                            {z.ocrText && norm(z.ocrText) !== norm(z.phrase ?? "") && (
+                              <span className="text-muted-foreground"> → on screen &ldquo;{z.ocrText}&rdquo;</span>
+                            )}
+                            {z.confirmedByChange && <span className="text-muted-foreground"> · screen changed there</span>}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">Typing in a field</span>
+                        )}
                       </td>
-                      <td className="py-1.5">{z.changedPx.toLocaleString()} px</td>
+                      <td className="py-1.5 whitespace-nowrap">{Math.round(z.w * z.h * 100 * 10) / 10}%</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           )}
+
+          <p className="mt-4 mb-1.5 text-[11px] font-medium text-muted-foreground">
+            Things you mentioned ({detection.mentions.length})
+          </p>
+          {detection.mentions.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              You don&apos;t name any on-screen elements. Say the label as you click (&ldquo;now click Plan Our Trip&rdquo;) to
+              get automatic zooms, or add them by hand.
+            </p>
+          ) : (
+            <ul className="space-y-0.5">
+              {detection.mentions.map((m, i) => (
+                <li key={i} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs">
+                  <span
+                    className={cn("size-1.5 shrink-0 rounded-full", m.status === "zoom" ? "bg-brand" : "bg-muted-foreground/40")}
+                  />
+                  <span className="font-medium">&ldquo;{m.phrase}&rdquo;</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">{m.time !== undefined ? `${m.time.toFixed(1)}s` : ""}</span>
+                  <span className={cn("ml-auto", m.status === "zoom" ? "text-foreground" : "text-muted-foreground")}>
+                    {MENTION_STATUS[m.status]}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
     </section>
   );
 }
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();

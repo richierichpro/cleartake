@@ -67,8 +67,15 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
   - Timeline: S / ✂ splits at the playhead; click a piece between splits on the video track to select it; drag on the video track for a range; Delete/Backspace cuts; Esc clears. Ruler and other areas scrub. Trim handles on both ends (dragging only trims further; the ✂ marker restores). Splits used by a cut are removed automatically; clicking a split line removes it. User cuts/trims show orange ✂ markers (click = restore); cleanup cuts show grey notches.
   - Script delete = PATCH segment `{deleted: true}`: adds a Cut with `segmentId`, or merges a hand-added empty paragraph into the previous one. Restore removes that cut.
 - Visuals (Step 10): `project.visuals` (lib/visuals.ts: 8 CSS-gradient presets, SHADOWS in px at 1080p, defaults: background on, Aurora, medium shadow, 16px corners, 8% padding). Background on → **16:9 canvas** with the recording centred inside the padding (fit by aspect); off → the recording's own aspect, edge to edge. `frameProps()` → `DemoVideoProps.frame`; radius/shadow scale with canvas height/1080, so 1080p and 1440p exports look identical. A custom image is uploaded raw to POST /background → `background-{id}.{ext}` (replaces the preset; picking a preset clears it). Settings save debounced (300ms) with instant local preview. The Scenes sub-tab is a placeholder until Step 15.
-- Zoom detection (Step 12, debug only): pure `detectZoomCandidates(frames.gray)` in lib/zoom-detect.ts, thresholds in `ZOOM_DETECT_CONFIG`. Per frame: diff vs the previous frame → 8px grid cells; frames with > 35% of the screen changed are ignored (scroll / page load); cells changing in > 60% of frames within ±3s are ignored (spinners / videos); connected cells → boxes (≥ 2 cells, ≥ 48 px); boxes touching within 0.6s merge into events; events > 40% of the screen or < 150 changed px are dropped; boxes padded by 1 cell. Output: `zoom-candidates.json` {candidates: [{id, start, end, x, y, w, h (0–1 of the recording), changedPx}], skipped, config}. It takes about 20ms for a 36s recording. Runs (and caches) the first time the Debug drawer opens.
-  - Debug: list with output time, box size and strength (click = seek; "cut" if removed); boxes are outlined on the preview while they happen (+0.8s). `recordingBox()` in lib/visuals.ts gives the recording's rect on the canvas (shared with the composition).
+- Zoom suggestions (Step 12, revised after review: pixel changes alone weren't zoom-worthy). **Zoom where the narration points**, in `lib/zoom-suggest.ts` (`ZOOM_SUGGEST_CONFIG`):
+  1. LLM (gemma) lists UI elements the speaker names in each paragraph's original text (≤ 3 per paragraph, copied as spoken).
+  2. `findPhraseTime` finds when it was spoken in the transcript (tolerates one word in four mismatching).
+  3. OCR at −1, −0.5, 0, +1s around it: `scripts/ocr.swift` (Apple Vision, compiled once to `.cache/ocr` by `lib/ocr.ts`; macOS only; ffmpeg grabs full-res frames). People name a button as they click it, so look before. `matchScore` picks the best text line (≥ 0.6; ties → smaller box).
+  4. Zoom = from min(spoken − 0.5s, frame where the text was found) to spoken + 2.5s, box = OCR text box (0–1 of the recording). Score boosted if `detectZoomCandidates` (pixel changes) saw a change there.
+  5. Backup: typing (a pixel-change event ≥ 1s, ≤ 8% of the screen). Unmentioned changes are dropped. Spacing: no two zooms within 3s (best score wins).
+  - Output `zoom-suggestions.json` {candidates (ZoomCandidate + reason, phrase, ocrText, confirmedByChange, score), mentions [{phrase, segmentId, status: zoom | not-spoken | not-on-screen | too-close, time, ocrText}]}. About 12s for the Telegram project (1 LLM call + OCR).
+  - Limitation: zooms only appear where the narration names on-screen text; the Telegram recording names one element ("Plan Our Trip"). Manual zooms (Step 13) cover the rest.
+  - Debug: "Zoom suggestions" lists each zoom (why: "You said X → on screen Y · screen changed there") and every mention with its status; boxes are outlined on the preview while they happen (+0.8s). `recordingBox()` in lib/visuals.ts gives the recording's rect on the canvas (shared with the composition).
   - The Debug drawer now sits beside the preview (the preview shrinks) instead of covering it.
 - Toasts are top-right under the top bar so they never cover the timeline.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
@@ -93,7 +100,7 @@ src/
     api/projects/[id]/voice/[segmentId]/route.ts     POST → generate (or reuse cached) AI clip for one paragraph
     api/voices/route.ts              GET → ElevenLabs voices + credits used
     api/projects/[id]/background/route.ts    POST raw image → custom background · DELETE removes it
-    api/projects/[id]/zoom-candidates/route.ts  POST → run detection, save zoom-candidates.json
+    api/projects/[id]/zoom-candidates/route.ts  POST → suggestZooms (narration + OCR), save zoom-suggestions.json
     api/projects/[id]/export/route.ts        GET export state (marks interrupted renders) · POST start export
     api/projects/[id]/export/download/route.ts  GET latest export as "{title}.mp4"
     api/projects/[id]/activity/route.ts      POST → sample frames, save motion.json + frames.gray
@@ -138,13 +145,16 @@ src/
     client.ts                        browser helpers (mediaUrl, readVideoInfo, uploadVideo, updateProject)
     edits.ts                         (shared) removedRanges, subtractRanges, isSegmentRemoved, newCutId
     visuals.ts                       (shared) presets, SHADOWS, DEFAULT_VISUALS, visualsOf, frameProps
-    zoom-detect.ts                   (pure) ZOOM_DETECT_CONFIG, detectZoomCandidates
+    zoom-detect.ts                   (pure) ZOOM_DETECT_CONFIG, detectZoomCandidates (pixel-change regions; backup signal)
+    zoom-suggest.ts                  suggestZooms: LLM mentions → transcript time → OCR box; typing backup; 3s spacing
+    ocr.ts                           ocrFrames(video, times): builds .cache/ocr from scripts/ocr.swift, returns text boxes
     format.ts                        formatTime, formatRelative, titleFromFileName
   remotion/
     demo-video.tsx                   DemoVideo composition (preview + export)
     constants.ts                     FPS, export qualities, compositionSize(w, h, quality), estimateRenderSeconds (no React; safe on the server)
     root.tsx / index.ts              Composition "DemoVideo" with calculateMetadata from props; registerRoot (render bundle entry)
 scripts/
+  ocr.swift                          Apple Vision OCR helper (compiled to .cache/ocr on first use)
   render.mjs                         export renderer (child process), reports "@@{json}" lines
 data/projects/{id}/                  gitignored
   project.json
@@ -155,7 +165,7 @@ data/projects/{id}/                  gitignored
   voice-{hash}.mp3 / .json           AI clips + ElevenLabs character alignment (Step 5)
   motion.json                        { fps: 5, width: 160, height, frames, scores[] } (Step 6)
   frames.gray                        raw 8-bit gray frames, frames × width × height (Step 6; Step 12 reuses)
-  zoom-candidates.json               detected change regions (Step 12)
+  zoom-suggestions.json              zoom suggestions + mentions (Step 12)
   background-{id}.{jpg|png|webp}     custom background image (Step 10)
   export-props.json                  inputProps of the last export (Step 8)
   export-{timestamp}.mp4             latest export (Step 8)

@@ -129,7 +129,7 @@ export function Preview({
                       z.y < 0.06 ? "top-0.5 left-0.5" : "-top-5", // keep the label visible at the top edge
                     )}
                   >
-                    {z.start.toFixed(1)}s · {Math.round(z.w * z.h * 100)}%
+                    {z.start.toFixed(1)}s · {(z.w * z.h * 100).toFixed(z.w * z.h < 0.01 ? 1 : 0)}%
                   </span>
                 </div>
               ));
