@@ -11,9 +11,9 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 6 – Cleanup + sync plan
 - [x] Step 7 – Preview (Remotion)
 - [x] Step 8 – Export + download
-- [ ] Step 9 – Trim and cut
-- [ ] Steps 10–15
-- Open (Step 9): deleting a paragraph added with "+ Add" should merge it back into the previous one instead of becoming a cut.
+- [x] Step 9 – Trim and cut (awaiting "works")
+- [ ] Step 10 – Visuals tab (Background)
+- [ ] Steps 11–15
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
 
@@ -60,6 +60,10 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
   - Quality choice in the Export panel: 1080p / 1440p (default) / Original, never upscaling; options with identical sizes are hidden. The last export's choice is remembered. The editor Player stays at 1080p. Encoding: `jpegQuality: 95`, `crf: 16` (screen text was soft with Remotion's defaults of 80 / 18).
   - Speed: about 4.5s of render per output second at 1728×1080, scaling with pixel count (`estimateRenderSeconds`). It uses all cores, so the laptop fan spins. Benchmark hint: `concurrency: 4` was faster than 8 on this 8-core Mac (67s vs 81s); not applied yet.
   - The renderer serves its bundle on localhost:3001, so the media route sends CORS headers (+ OPTIONS). Without them, @remotion/media fell back to OffthreadVideo.
+- Trim & cut (Step 9): `project.cuts` / `trim` / `splits` in source time, saved via PATCH `{ edit }` (validated and clamped server-side) with optimistic local updates. `removedRanges()` (lib/edits.ts) = cuts + trim + legacy `deleted`; the plan subtracts them exactly (`subtractRanges`) after cleanup. A partial cut keeps the paragraph's voice and retimes the rest; a full cut removes the voice ("cut by you").
+  - Timeline: S / ✂ splits at the playhead; click a piece between splits on the video track to select it; drag on the video track for a range; Delete/Backspace cuts; Esc clears. Ruler and other areas scrub. Trim handles on both ends (dragging only trims further; the ✂ marker restores). User cuts/trims show orange ✂ markers (click = restore); cleanup cuts show grey notches.
+  - Script delete = PATCH segment `{deleted: true}`: adds a Cut with `segmentId`, or merges a hand-added empty paragraph into the previous one. Restore removes that cut.
+- Toasts are top-right under the top bar so they never cover the timeline.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
 
@@ -94,6 +98,7 @@ src/
     editor/script-view.tsx           Script tab: editable document, autosave, timestamp gutter (hover → Play; plays AI clip over the muted video), voice status dot (orange = outdated, hollow = none), voice vs video length with amber warning, hover actions (play, regenerate, show original, revert to AI, delete), "+ Add", "Generate N changed", Polish banner
     editor/voice-tab.tsx             Use original voice toggle, voice dropdown (name + gender/accent/style, preview button), model, credits bar
     editor/debug-drawer.tsx          Debug drawer: Cleanup & sync (duration before → after, per-paragraph decisions, cleanup actions, Re-analyze); segmentation table + Rebuild; rewrite comparison + Run again
+    editor/use-edits.ts              selection + split / cutSelection / restoreCut / setTrim, each with an Undo toast
     editor/use-sync-plan.ts          loads motion + transcript, auto-analyzes old projects, memoizes buildSyncPlan
     editor/editor.tsx                loads project, layout, Space shortcut, skeleton, not-found
     editor/use-playback.ts           Remotion Player-backed playback (output time): currentTime, seek, toggle, playRange, volume/mute, attachPlayer
@@ -101,7 +106,7 @@ src/
     editor/export-button.tsx         Export button (shows % while rendering) + popover: idle / rendering (stage + bar) / ready (Download, Export again) / error; silent-paragraph warning; toast when done
     editor/left-panel.tsx            collapsible panel, 5 tabs with animated underline, empty states
     editor/preview.tsx               dot-grid canvas, aspect-fit framed Remotion <Player> of DemoVideo, play overlay, "N paragraphs will play silently" pill, codec error fallback
-    editor/control-bar.tsx           captions/cut (inactive placeholders), play, time, volume, timeline zoom
+    editor/control-bar.tsx           captions (inactive), ✂ split, "Cut Xs" when something is selected, play, time, volume, timeline zoom
     editor/timeline.tsx              (output time) video track = plan pieces (paragraph number, speed badge, freeze hatch, cut markers), voice track = clips where they play (dashed if missing/outdated), debug strips while the drawer is open (activity: speaking/moving/still; plan: cut/4×/freeze ticks); ruler (adaptive ticks), filmstrip split at paragraph boundaries (deleted ones faded), voice track (real AI clip length, orange dot if outdated, dashed if no voice yet, amber if the clip overruns its paragraph), hover guide, draggable playhead, auto-follow
     ui/                              shadcn: alert-dialog, button, input, skeleton, slider, sonner, tooltip
   lib/
@@ -120,6 +125,7 @@ src/
     assemblyai.ts                    upload / submit / poll
     ffmpeg.ts                        extractAudio (mono 16 kHz 64k MP3)
     client.ts                        browser helpers (mediaUrl, readVideoInfo, uploadVideo, updateProject)
+    edits.ts                         (shared) removedRanges, subtractRanges, isSegmentRemoved, newCutId
     format.ts                        formatTime, formatRelative, titleFromFileName
   remotion/
     demo-video.tsx                   DemoVideo composition (preview + export)
@@ -184,6 +190,8 @@ data/projects/{id}/                  gitignored
 }
 ```
 Also on project.json: `"voice": { "mode": "ai" | "original", "voiceId", "voiceName", "model" }` (Step 5; defaults to Matilda + eleven_flash_v2_5). A clip is **outdated** when its text, voiceId or model differs from the current values.
+
+`"cuts": [{ "id", "start", "end", "segmentId"? }]`, `"trim": { "start", "end" }`, `"splits": [seconds]` (Step 9, source time).
 
 `"export": { "status": "rendering" | "done" | "error", "quality": "1080p" | "1440p" | "original", "width", "height", "stage", "progress": 0–1, "startedAt", "finishedAt", "file", "size", "duration", "error" }` (Step 8).
 

@@ -5,6 +5,7 @@ import { Player } from "@remotion/player";
 import { AnimatePresence, motion } from "framer-motion";
 import { Play, Sparkles, TriangleAlert } from "lucide-react";
 import { mediaUrl } from "@/lib/client";
+import { isSegmentRemoved } from "@/lib/edits";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
 import type { SyncPlan } from "@/lib/sync";
 import type { Project } from "@/lib/types";
@@ -47,7 +48,9 @@ export function Preview({ project, plan, playback }: { project: Project; plan: S
 
   // Paragraphs that will play silently because their AI voice is missing or outdated.
   const missingVoice =
-    v.mode === "ai" ? (project.segments ?? []).filter((s) => ["none", "outdated"].includes(clipStatus(s, v))).length : 0;
+    v.mode === "ai" ? (project.segments ?? []).filter(
+          (s) => ["none", "outdated"].includes(clipStatus(s, v)) && !isSegmentRemoved(project, s),
+        ).length : 0;
   const durationInFrames = Math.max(1, Math.round(plan.outputDuration * FPS));
 
   return (

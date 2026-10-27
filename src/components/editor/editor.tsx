@@ -20,6 +20,7 @@ import { Timeline } from "./timeline";
 import { TopBar } from "./top-bar";
 import { usePlayback } from "./use-playback";
 import { useSyncPlan } from "./use-sync-plan";
+import { useEdits } from "./use-edits";
 
 export function Editor({ id }: { id: string }) {
   const [project, setProject] = useState<Project | null | "missing">(null);
@@ -49,6 +50,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
   // Until screen activity is analyzed, play the recording as-is.
   const plan = useMemo(() => sync.plan ?? identityPlan(project), [sync.plan, project]);
   const playback = usePlayback(plan.outputDuration);
+  const edits = useEdits(project, plan, onChange, playback.currentTime);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
   const { toggle } = playback;
@@ -59,19 +61,23 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
     if (needsSegments) rebuildSegments(project.id).then(onChange).catch(() => {});
   }, [needsSegments, project.id, onChange]);
 
-  // Space = play/pause, unless the user is typing.
+  // Space = play/pause, S = split at playhead, Delete = cut selection, Esc = clear selection
+  // (unless the user is typing).
+  const { split, cutSelection, setSelection } = edits;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (el.closest("input, textarea, [contenteditable=true]")) return;
+      if (el.closest("input, textarea, [contenteditable=true]") || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === "Space") {
         e.preventDefault();
         toggle();
-      }
+      } else if (e.key === "s" || e.key === "S") split();
+      else if (e.key === "Delete" || e.key === "Backspace") cutSelection();
+      else if (e.key === "Escape") setSelection(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle]);
+  }, [toggle, split, cutSelection, setSelection]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
@@ -89,7 +95,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
         />
         <main className="relative flex min-w-0 flex-1 flex-col">
           <Preview project={project} plan={plan} playback={playback} />
-          <ControlBar playback={playback} zoomIndex={zoomIndex} onZoomIndex={setZoomIndex} />
+          <ControlBar playback={playback} edits={edits} zoomIndex={zoomIndex} onZoomIndex={setZoomIndex} />
           <Timeline
             playback={playback}
             zoom={ZOOM_LEVELS[zoomIndex]}
@@ -98,6 +104,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
             voice={voiceOf(project)}
             plan={plan}
             debug={debugOpen}
+            edits={edits}
           />
           <AnimatePresence>
             {debugOpen && (

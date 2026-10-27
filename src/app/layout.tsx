@@ -27,7 +27,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <TooltipProvider delay={300}>{children}</TooltipProvider>
-        <Toaster position="bottom-right" />
+        {/* Top right, under the editor top bar, so toasts never cover the timeline */}
+        <Toaster position="top-right" offset={{ top: 64 }} />
       </body>
     </html>
   );

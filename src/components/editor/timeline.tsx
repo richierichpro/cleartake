@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Film, Mic, Snowflake } from "lucide-react";
+import { Film, Mic, Scissors, Snowflake } from "lucide-react";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { clipStatus, estimateSeconds } from "@/lib/voice-settings";
-import { pieceLength, segmentRanges, sourceToOutput, SYNC_CONFIG, type SyncPlan } from "@/lib/sync";
+import { outputToSource, pieceLength, segmentRanges, sourceToOutput, SYNC_CONFIG, type SyncPlan } from "@/lib/sync";
+import type { Edits } from "./use-edits";
 import type { Segment, VoiceSettings } from "@/lib/types";
 import type { Playback } from "./use-playback";
 
@@ -41,15 +42,22 @@ interface Props {
   voice: VoiceSettings;
   plan: SyncPlan; // everything on the timeline is in output (edited video) time
   debug: boolean; // show activity + plan strips
+  edits: Edits; // trim handles, splits, selection, cut markers (Step 9)
 }
 
-export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, debug }: Props) {
+type Drag =
+  | { mode: "scrub" }
+  | { mode: "select"; x0: number; t0: number; moved: boolean }
+  | { mode: "trim"; side: "start" | "end"; t: number };
+
+export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, debug, edits }: Props) {
   const { currentTime, seek } = playback;
   const duration = playback.duration || 1;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [viewW, setViewW] = useState(0);
   const [hoverT, setHoverT] = useState<number | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragging = drag !== null;
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -105,6 +113,39 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
   const fps = SYNC_CONFIG.fps;
   const activityRuns = runs(plan.states).map((r) => ({ value: r.value, start: r.start / fps, end: r.end / fps }));
 
+  // ---- Step 9: pieces between split points, selection, trim, cut markers ----
+  const src = (t: number) => outputToSource(plan, t);
+  const sourceDuration = plan.sourceDuration;
+  function selectPieceAt(t: number) {
+    const ts = src(t);
+    const before = edits.splits.filter((x) => x <= ts);
+    const after = edits.splits.filter((x) => x > ts);
+    if (!before.length && !after.length) return edits.setSelection(null); // no splits yet: nothing to select
+    edits.setSelection({ start: before.length ? before[before.length - 1] : 0, end: after.length ? after[0] : sourceDuration });
+  }
+  function commitTrim(d: Extract<Drag, { mode: "trim" }>) {
+    const current = edits.trim ?? { start: 0, end: sourceDuration };
+    if (d.side === "start" && d.t > 0.05) edits.setTrim({ start: src(d.t), end: current.end });
+    if (d.side === "end" && d.t < duration - 0.05) edits.setTrim({ start: current.start, end: src(d.t) });
+  }
+  function startTrim(e: React.PointerEvent, side: "start" | "end") {
+    e.stopPropagation();
+    scrollerRef.current?.setPointerCapture(e.pointerId);
+    setDrag({ mode: "trim", side, t: side === "start" ? 0 : duration });
+  }
+  // User removals (cuts and trim) get restorable ✂ markers where the video resumes.
+  const userRemoved = [
+    ...edits.cuts.map((c) => ({ key: c.id, start: c.start, end: c.end, restore: () => edits.restoreCut(c.id), label: c.segmentId ? "Deleted paragraph" : "Cut" })),
+    ...(edits.trim && edits.trim.start > 0.01
+      ? [{ key: "trim-start", start: 0, end: edits.trim.start, restore: () => edits.setTrim({ start: 0, end: edits.trim!.end }), label: "Trimmed start" }]
+      : []),
+    ...(edits.trim && edits.trim.end < sourceDuration - 0.01
+      ? [{ key: "trim-end", start: edits.trim.end, end: sourceDuration, restore: () => edits.setTrim({ start: edits.trim!.start, end: sourceDuration }), label: "Trimmed end" }]
+      : []),
+  ];
+  const coveredByUser = (a: number, b: number) => userRemoved.some((r) => r.start < b && r.end > a);
+  const inKept = (t: number) => plan.pieces.some((p) => t > p.sourceStart + 0.01 && t < p.sourceEnd - 0.01);
+
   const timeAt = (clientX: number) => {
     const rect = scrollerRef.current!.getBoundingClientRect();
     const x = clientX - rect.left + scrollerRef.current!.scrollLeft;
@@ -132,16 +173,35 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
         className="scroll-thin relative h-full overflow-x-auto overflow-y-hidden select-none"
         onPointerDown={(e) => {
           if (e.button !== 0) return;
-          setDragging(true);
           e.currentTarget.setPointerCapture(e.pointerId);
-          seek(timeAt(e.clientX));
+          const t = timeAt(e.clientX);
+          const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+          // On the video track: click selects a piece, drag selects a range. Elsewhere: scrub.
+          if (y >= VIDEO_TOP && y <= VIDEO_TOP + 56) setDrag({ mode: "select", x0: e.clientX, t0: t, moved: false });
+          else {
+            setDrag({ mode: "scrub" });
+            seek(t);
+          }
         }}
         onPointerMove={(e) => {
           const t = timeAt(e.clientX);
-          if (dragging) seek(t);
           setHoverT(t);
+          if (drag?.mode === "scrub") seek(t);
+          else if (drag?.mode === "trim") setDrag({ ...drag, t });
+          else if (drag?.mode === "select" && (drag.moved || Math.abs(e.clientX - drag.x0) > 4)) {
+            if (!drag.moved) setDrag({ ...drag, moved: true });
+            const [a, b] = [Math.min(drag.t0, t), Math.max(drag.t0, t)];
+            edits.setSelection({ start: outputToSource(plan, a), end: outputToSource(plan, b) });
+          }
         }}
-        onPointerUp={() => setDragging(false)}
+        onPointerUp={(e) => {
+          const t = timeAt(e.clientX);
+          if (drag?.mode === "select" && !drag.moved) {
+            seek(t);
+            selectPieceAt(t);
+          } else if (drag?.mode === "trim") commitTrim(drag);
+          setDrag(null);
+        }}
         onPointerLeave={() => setHoverT(null)}
       >
         {viewW > 0 && (
@@ -170,7 +230,8 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
             {plan.pieces.map((p, i) => {
               const prev = plan.pieces[i - 1];
               const newParagraph = !prev || prev.segmentId !== p.segmentId;
-              const cutBefore = prev && p.sourceStart - prev.sourceEnd > 0.05 ? p.sourceStart - prev.sourceEnd : 0;
+              const gap = prev && p.sourceStart - prev.sourceEnd > 0.05 && !coveredByUser(prev.sourceEnd, p.sourceStart);
+              const cutBefore = gap ? p.sourceStart - prev.sourceEnd : 0;
               const moving = (p.sourceEnd - p.sourceStart) / p.speed;
               const segIndex = segments?.findIndex((s) => s.id === p.segmentId) ?? -1;
               return (
@@ -221,7 +282,7 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
                   </div>
                   {cutBefore > 0 && (
                     <div
-                      title={`Cut ${cutBefore.toFixed(1)}s`}
+                      title={`Cleanup removed ${cutBefore.toFixed(1)}s`}
                       className="absolute z-[1] h-14 w-[3px] -translate-x-1/2 rounded-full bg-foreground/70 ring-2 ring-white"
                       style={{ top: VIDEO_TOP, left: xOf(p.outputStart) }}
                     />
@@ -265,6 +326,78 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
                 {segments ? "No narration" : "Your voice will appear here after transcription"}
               </div>
             )}
+
+            {/* Split points */}
+            {edits.splits.filter(inKept).map((t) => (
+              <div
+                key={`split${t}`}
+                className="pointer-events-none absolute z-[2] w-[2px] -translate-x-1/2 rounded-full bg-white shadow-[0_0_0_1px_rgba(17,17,19,0.45)]"
+                style={{ top: VIDEO_TOP - 3, height: 62, left: xOf(sourceToOutput(plan, t)) }}
+              />
+            ))}
+
+            {/* Selection: click a piece or drag a range on the video track, then Delete */}
+            {edits.selection && (() => {
+              const a = sourceToOutput(plan, edits.selection.start);
+              const b = sourceToOutput(plan, edits.selection.end);
+              return (
+                <div
+                  className="pointer-events-none absolute z-[3] rounded-md border-2 border-brand bg-brand/15"
+                  style={{ top: VIDEO_TOP - 2, height: 60, left: xOf(a), width: Math.max(4, (b - a) * pps) }}
+                >
+                  {(b - a) * pps > 70 && (
+                    <span className="absolute right-1 bottom-1 rounded bg-brand px-1 text-[10px] font-medium text-white">
+                      {(edits.selection.end - edits.selection.start).toFixed(1)}s · Delete to cut
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Trim preview while dragging a handle */}
+            {drag?.mode === "trim" && (
+              <div
+                className="pointer-events-none absolute z-[3] rounded-md bg-foreground/45"
+                style={{
+                  top: VIDEO_TOP,
+                  height: 56,
+                  left: xOf(drag.side === "start" ? 0 : drag.t),
+                  width: (drag.side === "start" ? drag.t : duration - drag.t) * pps,
+                }}
+              />
+            )}
+
+            {/* Trim handles */}
+            {(["start", "end"] as const).map((side) => (
+              <div
+                key={side}
+                onPointerDown={(e) => startTrim(e, side)}
+                title={side === "start" ? "Drag to trim the start" : "Drag to trim the end"}
+                className="group/handle absolute z-[4] flex w-2.5 cursor-ew-resize items-center justify-center rounded-[4px] border bg-white shadow-sm transition-colors hover:border-brand"
+                style={{
+                  top: VIDEO_TOP,
+                  height: 56,
+                  left: xOf(drag?.mode === "trim" && drag.side === side ? drag.t : side === "start" ? 0 : duration) - 5,
+                }}
+              >
+                <span className="h-5 w-[2px] rounded-full bg-muted-foreground/50 group-hover/handle:bg-brand" />
+              </div>
+            ))}
+
+            {/* ✂ markers for your cuts and trims: click to restore */}
+            {userRemoved.map((r) => (
+              <button
+                key={r.key}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={r.restore}
+                title={`${r.label} · ${(r.end - r.start).toFixed(1)}s removed. Click to restore.`}
+                aria-label={`Restore ${r.label.toLowerCase()} (${(r.end - r.start).toFixed(1)}s)`}
+                className="absolute z-[5] flex size-[18px] -translate-x-1/2 items-center justify-center rounded-full border border-brand bg-white text-brand shadow-sm transition-transform duration-150 hover:scale-110 hover:bg-brand hover:text-white"
+                style={{ top: VIDEO_TOP - 9, left: xOf(Math.min(sourceToOutput(plan, r.start), duration)) }}
+              >
+                <Scissors className="size-2.5" />
+              </button>
+            ))}
 
             {/* Debug strips: activity (speaking / moving / still) and plan (fast-forward / freeze), mapped to output time */}
             {debug && plan.states.length > 0 && (

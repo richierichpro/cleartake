@@ -22,6 +22,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { generateVoice, rewriteScript, splitSegment, updateSegment } from "@/lib/client";
+import { isSegmentRemoved } from "@/lib/edits";
 import { outputToSource, segmentRanges, type SyncPlan } from "@/lib/sync";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -139,7 +140,9 @@ export function ScriptView({
     }
   }
 
-  const changed = (segments ?? []).filter((s) => ["none", "outdated"].includes(clipStatus(s, voice)));
+  const changed = (segments ?? []).filter(
+    (s) => ["none", "outdated"].includes(clipStatus(s, voice)) && !isSegmentRemoved(project, s),
+  );
   const changedCredits = changed.reduce((n, s) => n + creditCost(s.text, voice.model), 0);
 
   async function regenerateAll() {
@@ -157,15 +160,16 @@ export function ScriptView({
   }
 
   // ---- paragraph actions ----------------------------------------------------
+  // Deleting a paragraph cuts its video (restorable); a hand-added empty one merges into the previous paragraph.
   async function setDeleted(seg: Segment, deleted: boolean) {
     await save(seg.id);
-    onChange((prev) => ({
-      ...prev,
-      segments: prev.segments?.map((s) => (s.id === seg.id ? { ...s, deleted } : s)),
-    }));
     try {
-      await updateSegment(project.id, seg.id, { deleted });
-      if (deleted) toast("Paragraph deleted", { action: { label: "Undo", onClick: () => setDeleted(seg, false) } });
+      const updated = await updateSegment(project.id, seg.id, { deleted });
+      applyServer(updated);
+      if (!deleted) return;
+      const merged = !updated.segments?.some((s) => s.id === seg.id);
+      if (merged) toast("Paragraph removed", { description: "Its video was merged into the paragraph before it." });
+      else toast("Paragraph deleted and its video cut", { action: { label: "Undo", onClick: () => setDeleted(seg, false) } });
     } catch {
       toast.error("Couldn't update the paragraph");
     }
@@ -246,7 +250,7 @@ export function ScriptView({
               <Loader2 className="size-3 animate-spin" /> Saving…
             </span>
           ) : (
-            pluralize(segments.filter((s) => !s.deleted).length, "paragraph")
+            pluralize(segments.filter((s) => !isSegmentRemoved(project, s)).length, "paragraph")
           )}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
@@ -312,7 +316,7 @@ export function ScriptView({
         )}
 
         {segments.map((seg) =>
-          seg.deleted ? (
+          isSegmentRemoved(project, seg) ? (
             <DeletedRow key={seg.id} seg={seg} onRestore={() => setDeleted(seg, false)} />
           ) : (
             <Paragraph
@@ -567,7 +571,7 @@ function DeletedRow({ seg, onRestore }: { seg: Segment; onRestore: () => void })
       <span className="w-11 shrink-0 font-mono text-[11px] tabular-nums line-through opacity-60">
         {formatTime(seg.start)}
       </span>
-      <span className="italic">Paragraph deleted</span>
+      <span className="italic">Paragraph deleted · its video is cut</span>
       <button onClick={onRestore} className="font-medium text-foreground underline-offset-4 hover:underline">
         Restore
       </button>

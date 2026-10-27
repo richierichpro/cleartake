@@ -6,17 +6,19 @@ import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { Edits } from "./use-edits";
 import type { Playback } from "./use-playback";
 
 export const ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16];
 
 interface Props {
   playback: Playback;
+  edits: Edits;
   zoomIndex: number;
   onZoomIndex: (i: number) => void;
 }
 
-export function ControlBar({ playback, zoomIndex, onZoomIndex }: Props) {
+export function ControlBar({ playback, edits, zoomIndex, onZoomIndex }: Props) {
   const { playing, currentTime, duration, volume, muted } = playback;
 
   return (
@@ -25,9 +27,15 @@ export function ControlBar({ playback, zoomIndex, onZoomIndex }: Props) {
         <IconButton label="Captions" hint="Available once the AI voice is generated" inactive>
           <Captions />
         </IconButton>
-        <IconButton label="Split at playhead" shortcut="S" hint="Available once the script is ready" inactive>
+        <IconButton label="Split at playhead" shortcut="S" hint="Then click a piece and press Delete to cut it" onClick={edits.split}>
           <Scissors />
         </IconButton>
+        {edits.selection && (
+          <Button size="sm" variant="outline" className="ml-1 gap-1.5 border-brand/40 text-brand hover:bg-brand/5 hover:text-brand" onClick={edits.cutSelection}>
+            <Scissors /> Cut {(edits.selection.end - edits.selection.start).toFixed(1)}s
+            <kbd className="ml-0.5 rounded border border-brand/30 px-1 font-sans text-[10px] leading-4">Del</kbd>
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-3">

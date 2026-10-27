@@ -8,6 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { isSegmentRemoved } from "@/lib/edits";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
 import type { ExportState, Project } from "@/lib/types";
 import {
@@ -79,7 +80,9 @@ export function ExportButton({ project, duration }: { project: Project; duration
 
   const v = voiceOf(project);
   const silent =
-    v.mode === "ai" ? (project.segments ?? []).filter((s) => ["none", "outdated"].includes(clipStatus(s, v))).length : 0;
+    v.mode === "ai" ? (project.segments ?? []).filter(
+          (s) => ["none", "outdated"].includes(clipStatus(s, v)) && !isSegmentRemoved(project, s),
+        ).length : 0;
   const pct = Math.round((state?.progress ?? 0) * 100);
 
   return (
