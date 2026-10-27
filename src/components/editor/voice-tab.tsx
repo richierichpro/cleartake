@@ -15,7 +15,15 @@ import type { ProjectUpdate } from "./editor";
 
 const describe = (v: VoiceOption) => [v.gender, v.accent, v.style].filter(Boolean).join(", ");
 
-export function VoiceTab({ project, onChange }: { project: Project; onChange: ProjectUpdate }) {
+export function VoiceTab({
+  project,
+  onChange,
+  volume,
+}: {
+  project: Project;
+  onChange: ProjectUpdate;
+  volume: number; // app volume (0 when muted), applied to previews
+}) {
   const settings = voiceOf(project);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchVoices>> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +53,7 @@ export function VoiceTab({ project, onChange }: { project: Project; onChange: Pr
     audio.current?.pause();
     if (previewing === v.id || !v.previewUrl) return setPreviewing(null);
     audio.current = new Audio(v.previewUrl);
+    audio.current.volume = volume;
     audio.current.onended = () => setPreviewing(null);
     audio.current.play().catch(() => setPreviewing(null));
     setPreviewing(v.id);

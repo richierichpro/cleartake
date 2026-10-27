@@ -77,7 +77,9 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
         <LeftPanel
           content={{
             script: <ScriptView project={project} playback={playback} onChange={onChange} />,
-            voice: <VoiceTab project={project} onChange={onChange} />,
+            voice: (
+              <VoiceTab project={project} onChange={onChange} volume={playback.muted ? 0 : playback.volume} />
+            ),
           }}
         />
         <main className="relative flex min-w-0 flex-1 flex-col">

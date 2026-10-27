@@ -112,6 +112,13 @@ export function ScriptView({
   const audio = useRef<HTMLAudioElement | null>(null);
   const playingSeg = useRef<Segment | null>(null);
 
+  // The AI voice follows the app's volume slider and mute button, like the video.
+  useEffect(() => {
+    if (!audio.current) return;
+    audio.current.volume = playback.volume;
+    audio.current.muted = playback.muted;
+  }, [playback.volume, playback.muted]);
+
   function stopVoice() {
     audio.current?.pause();
     playingSeg.current = null;
@@ -128,6 +135,8 @@ export function ScriptView({
     if (aiMode && seg.voice && clipStatus(seg, voice) === "current") {
       audio.current ??= new Audio();
       audio.current.src = mediaUrl(project.id, seg.voice.file);
+      audio.current.volume = playback.volume;
+      audio.current.muted = playback.muted;
       audio.current.play().catch(() => {});
       playingSeg.current = seg;
       playback.playRange(seg.start, seg.end, { muted: true });
