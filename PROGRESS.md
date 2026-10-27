@@ -3,16 +3,23 @@
 Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 
 ## Status
-- [x] Step 1 – App shell + upload (awaiting "works")
-- [ ] Step 2 – Transcription
-- [ ] Steps 3–15
+- [x] Step 1 – App shell + upload
+- [x] Step 2 – Transcription (awaiting "works")
+- [ ] Step 3 – Segments
+- [ ] Steps 4–15
+
+Each step is committed separately on `main`, split into a few logical commits.
 
 ## Run
 ```bash
 npm install
 npm run dev          # http://localhost:3000
 ```
-`ffmpeg` is not installed yet (`brew install ffmpeg`); Step 2 needs it.
+Requires `ffmpeg` (installed via Homebrew) and `.env.local`:
+```
+ASSEMBLYAI_API_KEY=...
+ELEVENLABS_API_KEY=...   # Step 5
+```
 
 ## Stack notes
 - Next.js 16.4 (App Router, `cacheComponents` on). Its docs ship in `node_modules/next/dist/docs/`.
@@ -21,6 +28,9 @@ npm run dev          # http://localhost:3000
 - shadcn/ui "base-nova" style is built on **Base UI**, not Radix. Use the `render` prop instead of `asChild`. Slider values are arrays (`value={[n]}`).
 - Tailwind v4 tokens live in `src/app/globals.css`: `brand` (#FF5C35), `canvas` (#F5F5F6), plus the `.dot-grid` and `.scroll-thin` helpers.
 - Pages are client-rendered and fetch from the API routes. The filesystem is only touched in route handlers.
+- Processing runs as a fire-and-forget background job inside the Next server (`lib/pipeline.ts`). The Processing screen polls `GET /api/projects/{id}` every 1s. If the server restarts mid-job, the next GET marks the project `error` so it can be retried.
+- All writes to project.json go through `mutateProject()`, which locks per project so the pipeline and the editor can't overwrite each other.
+- AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
 
 ## File structure
 ```
@@ -29,14 +39,19 @@ src/
     layout.tsx                       fonts, TooltipProvider, Toaster
     page.tsx                         Home
     projects/[id]/page.tsx           Editor route (Suspense → <Editor id>)
+    projects/[id]/processing/page.tsx  Processing route
     api/projects/route.ts            GET list · POST upload (raw body streamed to disk)
     api/projects/[id]/route.ts       GET project · PATCH {title}
     api/projects/[id]/thumbnail/route.ts   POST jpeg → thumb.jpg
+    api/projects/[id]/process/route.ts     POST {keyterms} → starts/retries the pipeline
     api/projects/[id]/media/[file]/route.ts GET any project file, with HTTP Range support
   components/
     logo.tsx
     home/upload-zone.tsx             drag & drop, read metadata + thumbnail in the browser, XHR upload progress
     home/project-grid.tsx            recent projects, skeletons, empty state
+    processing/processing-screen.tsx animated step tracker, key terms entry, retry, auto-opens editor when ready
+    processing/keyterms-input.tsx    chip input (Enter/comma adds, Backspace removes)
+    editor/transcript-view.tsx       Script tab: raw transcript by sentence, timestamp click seeks, live word highlight, low-confidence words underlined
     editor/editor.tsx                loads project, layout, Space shortcut, skeleton, not-found
     editor/use-playback.ts           playback state (currentTime, seek, toggle, volume) used by preview, control bar and timeline; Step 7 swaps in Remotion Player behind it
     editor/top-bar.tsx               back, editable title (saves on blur/Enter, Esc reverts), Export
@@ -47,13 +62,18 @@ src/
     ui/                              shadcn: button, input, skeleton, slider, sonner, tooltip
   lib/
     types.ts                         Project types
-    projects.ts                      server fs helpers (safe paths, atomic writes)
+    projects.ts                      server fs helpers (safe paths, atomic writes, mutateProject lock, read/writeJson)
+    pipeline.ts                      background processing: extract audio → AssemblyAI → transcript.json → ready
+    assemblyai.ts                    upload / submit / poll
+    ffmpeg.ts                        extractAudio (mono 16 kHz 64k MP3)
     client.ts                        browser helpers (mediaUrl, readVideoInfo, uploadVideo, updateProject)
     format.ts                        formatTime, formatRelative, titleFromFileName
 data/projects/{id}/                  gitignored
   project.json
   original.{mp4|mov|webm|…}          never modified
   thumb.jpg
+  audio.mp3                          extracted voiceover (Step 2)
+  transcript.json                    (Step 2)
 ```
 
 ## JSON formats
@@ -73,6 +93,21 @@ data/projects/{id}/                  gitignored
     "height": 1080,
     "size": 2562319
   },
-  "thumbnail": "thumb.jpg"         // or null if the browser couldn't decode the video
+  "thumbnail": "thumb.jpg",        // or null if the browser couldn't decode the video
+  "keyterms": ["Demopolish", "Supabase"],
+  "statusDetail": "Listening to your voiceover…",   // live text for the current step
+  "stepStartedAt": "2026-10-28T…Z",
+  "error": null                    // or { "step": "transcribing", "message": "…" }
+}
+```
+Status flow: `uploaded` (waiting for key terms) → `transcribing` → (`writing` → `voicing`, from later steps) → `ready`. Any step can go to `error`.
+
+`data/projects/{id}/transcript.json` (times in **seconds**)
+```json
+{
+  "assemblyId": "…",
+  "createdAt": "…",
+  "text": "So today I will show you…",
+  "words": [{ "text": "So", "start": 0.4, "end": 0.56, "confidence": 0.97 }]
 }
 ```

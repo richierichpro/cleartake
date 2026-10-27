@@ -5,12 +5,13 @@ import Link from "next/link";
 import { FileQuestion } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { mediaUrl } from "@/lib/client";
-import type { Project } from "@/lib/types";
+import { fetchTranscript, mediaUrl } from "@/lib/client";
+import type { Project, Transcript } from "@/lib/types";
 import { ControlBar, ZOOM_LEVELS } from "./control-bar";
 import { LeftPanel } from "./left-panel";
 import { Preview } from "./preview";
 import { Timeline } from "./timeline";
+import { TranscriptView } from "./transcript-view";
 import { TopBar } from "./top-bar";
 import { usePlayback } from "./use-playback";
 
@@ -32,7 +33,12 @@ export function Editor({ id }: { id: string }) {
 function EditorLoaded({ project, onChange }: { project: Project; onChange: (p: Project) => void }) {
   const playback = usePlayback(project.video.duration);
   const [zoomIndex, setZoomIndex] = useState(0);
+  const [transcript, setTranscript] = useState<Transcript | null>();
   const { toggle } = playback;
+
+  useEffect(() => {
+    fetchTranscript(project.id).then(setTranscript).catch(() => setTranscript(null));
+  }, [project.id]);
 
   // Space = play/pause, unless the user is typing.
   useEffect(() => {
@@ -52,7 +58,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: (p: P
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
       <TopBar project={project} onChange={onChange} />
       <div className="flex min-h-0 flex-1">
-        <LeftPanel />
+        <LeftPanel content={{ script: <TranscriptView project={project} transcript={transcript} playback={playback} /> }} />
         <main className="flex min-w-0 flex-1 flex-col">
           <Preview
             src={mediaUrl(project.id, project.video.file)}

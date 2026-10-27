@@ -43,9 +43,10 @@ const TABS = [
   },
 ] as const;
 
-type TabId = (typeof TABS)[number]["id"];
+export type TabId = (typeof TABS)[number]["id"];
 
-export function LeftPanel() {
+// Tabs without content yet show their empty state.
+export function LeftPanel({ content }: { content: Partial<Record<TabId, React.ReactNode>> }) {
   const [open, setOpen] = useState(true);
   const [tab, setTab] = useState<TabId>("script");
   const active = TABS.find((t) => t.id === tab)!;
@@ -92,7 +93,7 @@ export function LeftPanel() {
                 transition={{ duration: 0.15 }}
                 className="h-full"
               >
-                <EmptyTab icon={active.icon} title={active.title} hint={active.hint} />
+                {content[tab] ?? <EmptyTab icon={active.icon} title={active.title} hint={active.hint} />}
               </motion.div>
             </AnimatePresence>
           </div>
