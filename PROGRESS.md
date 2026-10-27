@@ -10,7 +10,7 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 5 – AI voice + script editing
 - [x] Step 6 – Cleanup + sync plan
 - [x] Step 7 – Preview (Remotion)
-- [x] Step 8 – Export + download (awaiting "works")
+- [x] Step 8 – Export + download
 - [ ] Step 9 – Trim and cut
 - [ ] Steps 10–15
 - Open (Step 9): deleting a paragraph added with "+ Add" should merge it back into the previous one instead of becoming a cut.
