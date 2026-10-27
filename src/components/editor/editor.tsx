@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { AnimatePresence } from "framer-motion";
 import { FileQuestion } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchTranscript, mediaUrl } from "@/lib/client";
-import type { Project, Transcript } from "@/lib/types";
+import { mediaUrl, rebuildSegments } from "@/lib/client";
+import type { Project } from "@/lib/types";
 import { ControlBar, ZOOM_LEVELS } from "./control-bar";
+import { DebugDrawer } from "./debug-drawer";
 import { LeftPanel } from "./left-panel";
 import { Preview } from "./preview";
+import { ScriptView } from "./script-view";
 import { Timeline } from "./timeline";
-import { TranscriptView } from "./transcript-view";
 import { TopBar } from "./top-bar";
 import { usePlayback } from "./use-playback";
 
@@ -33,12 +35,14 @@ export function Editor({ id }: { id: string }) {
 function EditorLoaded({ project, onChange }: { project: Project; onChange: (p: Project) => void }) {
   const playback = usePlayback(project.video.duration);
   const [zoomIndex, setZoomIndex] = useState(0);
-  const [transcript, setTranscript] = useState<Transcript | null>();
+  const [debugOpen, setDebugOpen] = useState(false);
   const { toggle } = playback;
 
+  // Projects transcribed before segments existed: build them once.
+  const needsSegments = project.status === "ready" && !project.segments;
   useEffect(() => {
-    fetchTranscript(project.id).then(setTranscript).catch(() => setTranscript(null));
-  }, [project.id]);
+    if (needsSegments) rebuildSegments(project.id).then(onChange).catch(() => {});
+  }, [needsSegments, project.id, onChange]);
 
   // Space = play/pause, unless the user is typing.
   useEffect(() => {
@@ -56,10 +60,10 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: (p: P
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
-      <TopBar project={project} onChange={onChange} />
+      <TopBar project={project} onChange={onChange} debugOpen={debugOpen} onToggleDebug={() => setDebugOpen((o) => !o)} />
       <div className="flex min-h-0 flex-1">
-        <LeftPanel content={{ script: <TranscriptView project={project} transcript={transcript} playback={playback} /> }} />
-        <main className="flex min-w-0 flex-1 flex-col">
+        <LeftPanel content={{ script: <ScriptView project={project} playback={playback} /> }} />
+        <main className="relative flex min-w-0 flex-1 flex-col">
           <Preview
             src={mediaUrl(project.id, project.video.file)}
             aspect={project.video.width / project.video.height || 16 / 9}
@@ -70,7 +74,13 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: (p: P
             playback={playback}
             zoom={ZOOM_LEVELS[zoomIndex]}
             thumbnailUrl={project.thumbnail ? mediaUrl(project.id, project.thumbnail) : null}
+            segments={project.segments}
           />
+          <AnimatePresence>
+            {debugOpen && (
+              <DebugDrawer project={project} playback={playback} onChange={onChange} onClose={() => setDebugOpen(false)} />
+            )}
+          </AnimatePresence>
         </main>
       </div>
     </div>

@@ -2,15 +2,23 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowDownToLine, ArrowLeft, Check, Loader2 } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, Bug, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LogoMark } from "@/components/logo";
 import { updateProject } from "@/lib/client";
+import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 
-export function TopBar({ project, onChange }: { project: Project; onChange: (p: Project) => void }) {
+interface Props {
+  project: Project;
+  onChange: (p: Project) => void;
+  debugOpen: boolean;
+  onToggleDebug: () => void;
+}
+
+export function TopBar({ project, onChange, debugOpen, onToggleDebug }: Props) {
   const [title, setTitle] = useState(project.title);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
@@ -63,7 +71,24 @@ export function TopBar({ project, onChange }: { project: Project; onChange: (p: 
         )}
       </span>
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleDebug}
+                aria-label="Debug"
+                aria-pressed={debugOpen}
+                className={cn("text-muted-foreground", debugOpen && "bg-muted text-foreground")}
+              />
+            }
+          >
+            <Bug />
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Debug</TooltipContent>
+        </Tooltip>
         <Button
           size="lg"
           className="gap-2 rounded-lg px-4"

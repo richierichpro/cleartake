@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Film } from "lucide-react";
 import { formatTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import type { Segment } from "@/lib/types";
 import type { Playback } from "./use-playback";
 
 const PAD = 16; // horizontal breathing room so 0:00 and the end aren't glued to the edges
@@ -17,9 +19,10 @@ interface Props {
   playback: Playback;
   zoom: number;
   thumbnailUrl: string | null;
+  segments: Segment[] | undefined;
 }
 
-export function Timeline({ playback, zoom, thumbnailUrl }: Props) {
+export function Timeline({ playback, zoom, thumbnailUrl, segments }: Props) {
   const { currentTime, playing, seek } = playback;
   const duration = playback.duration || 1;
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -116,10 +119,30 @@ export function Timeline({ playback, zoom, thumbnailUrl }: Props) {
                   <Film className="size-3" /> Recording · {formatTime(duration)}
                 </span>
               </div>
-              <div className="mt-2 flex h-9 items-center justify-center rounded-lg border border-dashed text-[11px] text-muted-foreground">
-                Script segments and zooms will appear here
-              </div>
+              {!segments?.length && (
+                <div className="mt-2 flex h-9 items-center justify-center rounded-lg border border-dashed text-[11px] text-muted-foreground">
+                  Script paragraphs will appear here after transcription
+                </div>
+              )}
             </div>
+
+            {/* Segments track */}
+            {segments?.map((seg, i) => {
+              const active = currentTime >= seg.start && currentTime < seg.end;
+              return (
+                <div
+                  key={seg.id}
+                  className={cn(
+                    "absolute flex h-9 items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-[11px] transition-colors duration-150",
+                    active ? "border-brand/50 bg-brand/[0.06] text-foreground" : "bg-white text-muted-foreground hover:bg-[#FAFAFB]",
+                  )}
+                  style={{ top: RULER_H + 12 + 56 + 8, left: xOf(seg.start) + 1, width: Math.max(2, (seg.end - seg.start) * pps - 2) }}
+                >
+                  <span className={cn("shrink-0 font-medium", active && "text-brand")}>{i + 1}</span>
+                  <span className="truncate">{seg.text}</span>
+                </div>
+              );
+            })}
 
             {/* Hover guide */}
             {hoverT !== null && !dragging && (
