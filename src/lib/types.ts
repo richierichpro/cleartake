@@ -27,4 +27,23 @@ export interface Project {
   status: ProjectStatus;
   video: VideoInfo;
   thumbnail: string | null; // file name inside the project folder
+  keyterms?: string[]; // product names / technical words to help transcription
+  statusDetail?: string; // live message for the current processing step
+  stepStartedAt?: string; // ISO, when the current status began
+  error?: { step: ProjectStatus; message: string } | null;
+}
+
+// transcript.json: words in seconds (AssemblyAI returns milliseconds).
+export interface TranscriptWord {
+  text: string;
+  start: number;
+  end: number;
+  confidence: number;
+}
+
+export interface Transcript {
+  assemblyId: string;
+  createdAt: string;
+  text: string;
+  words: TranscriptWord[];
 }

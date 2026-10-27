@@ -36,6 +36,36 @@ export async function writeProject(project: Project) {
   await fs.rename(tmp, file);
 }
 
+// Serialize read-modify-write per project so the pipeline and the editor
+// can't overwrite each other's changes.
+const locks = new Map<string, Promise<unknown>>();
+
+export function mutateProject(id: string, fn: (p: Project) => void): Promise<Project> {
+  const prev = locks.get(id) ?? Promise.resolve();
+  const next = prev.then(async () => {
+    const project = await readProject(id);
+    if (!project) throw new Error("Project not found");
+    fn(project);
+    project.updatedAt = new Date().toISOString();
+    await writeProject(project);
+    return project;
+  });
+  locks.set(id, next.catch(() => {}));
+  return next;
+}
+
+export async function readJson<T>(id: string, name: string): Promise<T | null> {
+  try {
+    return JSON.parse(await fs.readFile(projectFile(id, name), "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeJson(id: string, name: string, data: unknown) {
+  await fs.writeFile(projectFile(id, name), JSON.stringify(data, null, 2));
+}
+
 export async function listProjects(): Promise<Project[]> {
   let ids: string[] = [];
   try {

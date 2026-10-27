@@ -14,6 +14,7 @@ const TYPES: Record<string, string> = {
   ".png": "image/png",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
+  ".json": "application/json",
 };
 
 // Serves files from a project folder with HTTP Range support so the video can seek.
