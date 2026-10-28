@@ -6,7 +6,9 @@ import { AnimatePresence } from "framer-motion";
 import { FileQuestion } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { mediaUrl, rebuildSegments } from "@/lib/client";
+import { toast } from "sonner";
+import { buildCaptions, captionsOn } from "@/lib/captions";
+import { mediaUrl, rebuildSegments, updateProject } from "@/lib/client";
 import { identityPlan, outputToSource } from "@/lib/sync";
 import { voiceOf } from "@/lib/voice-settings";
 import { outputZooms } from "@/lib/zooms";
@@ -72,6 +74,21 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
   const aiming =
     !!aimed && !playback.playing && playback.currentTime >= aimed.outStart && playback.currentTime <= aimed.outEnd;
   const playingZooms = outputZooms(project, plan, aiming ? zooms.selectedId : null);
+
+  // Step 14: captions follow the AI voice; the button explains why when there's nothing to caption.
+  const captionLines = useMemo(() => buildCaptions(project, plan), [project, plan]);
+  const captionsEnabled = captionsOn(project);
+  const captionsHint =
+    voiceOf(project).mode !== "ai"
+      ? "Captions follow the AI voice. Switch to it in the Voice tab"
+      : !captionLines.length
+        ? "Available once the AI voice is generated"
+        : null;
+  const toggleCaptions = useCallback(() => {
+    const enabled = !captionsOn(project);
+    onChange((p) => ({ ...p, captions: { enabled } }));
+    updateProject(project.id, { captions: { enabled } }).catch(() => toast.error("Couldn't save captions"));
+  }, [project, onChange]);
 
   const [zoomIndex, setZoomIndex] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -141,6 +158,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
               playback={playback}
               debugBoxes={debugBoxes}
               zooms={playingZooms}
+              captions={captionsEnabled && !captionsHint ? captionLines : []}
               aim={aiming && zooms.selected ? { zoom: zooms.selected, onFocus: (x, y) => zooms.update(zooms.selected!.id, { x, y }) } : null}
             />
             <AnimatePresence>
@@ -151,13 +169,20 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
                   sync={sync}
                   plan={plan}
                   zoomDetection={zoomDetection}
+                  captions={captionLines}
                   onChange={onChange}
                   onClose={() => setDebugOpen(false)}
                 />
               )}
             </AnimatePresence>
           </div>
-          <ControlBar playback={playback} edits={edits} zoomIndex={zoomIndex} onZoomIndex={setZoomIndex} />
+          <ControlBar
+            playback={playback}
+            edits={edits}
+            zoomIndex={zoomIndex}
+            onZoomIndex={setZoomIndex}
+            captions={{ enabled: captionsEnabled, unavailable: captionsHint, onToggle: toggleCaptions }}
+          />
           <Timeline
             playback={playback}
             zoom={ZOOM_LEVELS[zoomIndex]}

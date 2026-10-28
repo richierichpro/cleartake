@@ -13,6 +13,7 @@ import { ACTION_COLOR, STATE_COLOR } from "./timeline";
 import type { useSyncPlan } from "./use-sync-plan";
 import type { ZoomDetectionState } from "./use-zoom-detection";
 import type { Mention } from "@/lib/zoom-suggest";
+import { CAPTION_CONFIG, type CaptionLine } from "@/lib/captions";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
@@ -26,6 +27,7 @@ export function DebugDrawer({
   sync,
   plan,
   zoomDetection,
+  captions,
   onChange,
   onClose,
 }: {
@@ -34,6 +36,7 @@ export function DebugDrawer({
   sync: ReturnType<typeof useSyncPlan>;
   plan: SyncPlan; // for mapping source times to the edited video
   zoomDetection: ZoomDetectionState;
+  captions: CaptionLine[]; // built even when captions are off, so you can check them
   onChange: (p: Project) => void;
   onClose: () => void;
 }) {
@@ -57,6 +60,8 @@ export function DebugDrawer({
         <SyncDebug sync={sync} playback={playback} />
         <div className="mx-4 border-t" />
         <ZoomDebug zoom={zoomDetection} plan={plan} playback={playback} />
+        <div className="mx-4 border-t" />
+        <CaptionsDebug lines={captions} playback={playback} />
         <div className="mx-4 border-t" />
         <SegmentsDebug project={project} plan={plan} playback={playback} onChange={onChange} />
         <div className="mx-4 border-t" />
@@ -484,3 +489,59 @@ function ZoomDebug({ zoom, plan, playback }: { zoom: ZoomDetectionState; plan: S
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+const BREAK_LABEL: Record<CaptionLine["reason"], string> = {
+  sentence: "end of sentence",
+  pause: "pause in the voice",
+  length: "too long, split evenly",
+  paragraph: "end of paragraph",
+};
+
+function CaptionsDebug({ lines, playback }: { lines: CaptionLine[]; playback: Playback }) {
+  const c = CAPTION_CONFIG;
+  const now = playback.currentTime;
+  return (
+    <section className="p-4">
+      <h3 className="text-[13px] font-medium">Captions</h3>
+      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+        Built from the AI voice&apos;s word timings. A caption ends at a sentence, a pause of {c.pauseBreak}s or more, or the
+        end of a paragraph; longer ones (over {c.maxChars} characters or {c.maxWords} words) are split evenly. Each stays{" "}
+        {c.linger}s after its last word.
+      </p>
+      {!lines.length ? (
+        <p className="mt-3 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+          No captions yet: generate the AI voice (captions follow it).
+        </p>
+      ) : (
+        <table className="mt-3 w-full text-xs tabular-nums">
+          <thead>
+            <tr className="border-b text-left text-[11px] text-muted-foreground">
+              <th className="py-1.5 pr-2 font-medium">At</th>
+              <th className="py-1.5 pr-2 font-medium">Caption</th>
+              <th className="py-1.5 font-medium">Ends because</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l, i) => (
+              <tr
+                key={i}
+                onClick={() => playback.seek(l.start)}
+                className={cn(
+                  "cursor-pointer border-b border-dashed align-top last:border-0 hover:bg-[#FAFAFB]",
+                  now >= l.start && now < l.end && "bg-brand/5",
+                )}
+              >
+                <td className="py-1.5 pr-2 font-mono text-muted-foreground">{formatTime(l.start)}</td>
+                <td className="py-1.5 pr-2">
+                  {l.words.map((w) => w.text).join(" ")}
+                  <span className="ml-1 text-muted-foreground">({(l.end - l.start).toFixed(1)}s)</span>
+                </td>
+                <td className="py-1.5 whitespace-nowrap text-muted-foreground">{BREAK_LABEL[l.reason]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}

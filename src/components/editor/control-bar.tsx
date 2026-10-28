@@ -16,15 +16,22 @@ interface Props {
   edits: Edits;
   zoomIndex: number;
   onZoomIndex: (i: number) => void;
+  captions: { enabled: boolean; unavailable: string | null; onToggle: () => void }; // unavailable = why it can't be used
 }
 
-export function ControlBar({ playback, edits, zoomIndex, onZoomIndex }: Props) {
+export function ControlBar({ playback, edits, zoomIndex, onZoomIndex, captions }: Props) {
   const { playing, currentTime, duration, volume, muted } = playback;
 
   return (
     <div className="grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-t bg-white px-3">
       <div className="flex items-center gap-1">
-        <IconButton label="Captions" hint="Available once the AI voice is generated" inactive>
+        <IconButton
+          label={captions.unavailable ? "Captions" : captions.enabled ? "Hide captions" : "Show captions"}
+          hint={captions.unavailable ?? "Subtitles from the AI voice, current word highlighted"}
+          inactive={!!captions.unavailable}
+          active={captions.enabled && !captions.unavailable}
+          onClick={captions.onToggle}
+        >
           <Captions />
         </IconButton>
         <IconButton label="Split at playhead" shortcut="S" hint="Then click a piece and press Delete to cut it" onClick={edits.split}>
@@ -96,6 +103,7 @@ function IconButton({
   hint,
   shortcut,
   inactive,
+  active,
   disabled,
   onClick,
   children,
@@ -104,6 +112,7 @@ function IconButton({
   hint?: string;
   shortcut?: string;
   inactive?: boolean; // looks disabled but still shows its tooltip
+  active?: boolean; // a toggle that's on
   disabled?: boolean;
   onClick?: () => void;
   children: React.ReactNode;
@@ -117,9 +126,10 @@ function IconButton({
             size="icon-sm"
             aria-label={label}
             aria-disabled={inactive || undefined}
+            aria-pressed={active}
             disabled={disabled}
             onClick={inactive ? undefined : onClick}
-            className={cn("text-muted-foreground hover:text-foreground", inactive && "cursor-default opacity-45 hover:bg-transparent hover:text-muted-foreground")}
+            className={cn("text-muted-foreground hover:text-foreground", active && "bg-brand/10 text-brand hover:bg-brand/15 hover:text-brand", inactive && "cursor-default opacity-45 hover:bg-transparent hover:text-muted-foreground")}
           />
         }
       >

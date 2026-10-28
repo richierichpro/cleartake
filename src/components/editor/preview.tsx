@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { isSegmentRemoved } from "@/lib/edits";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
 import { frameProps, recordingBox } from "@/lib/visuals";
+import type { CaptionLine } from "@/lib/captions";
 import type { ZoomCandidate } from "@/lib/zoom-detect";
 import { zoomWindow, type OutputZoom } from "@/lib/zooms";
 import type { Zoom } from "@/lib/types";
@@ -25,6 +26,7 @@ export function Preview({
   playback,
   debugBoxes = [],
   zooms,
+  captions,
   aim,
 }: {
   project: Project;
@@ -32,6 +34,7 @@ export function Preview({
   playback: Playback;
   debugBoxes?: ZoomCandidate[]; // Step 12: detected change regions to outline (debug only)
   zooms: OutputZoom[]; // Step 13: what the Player plays (output seconds)
+  captions: CaptionLine[]; // Step 14: empty when captions are off
   aim?: { zoom: Zoom; onFocus: (x: number, y: number) => void } | null; // a selected zoom: click to set its focus
 }) {
   const { attachPlayer, playing, toggle } = playback;
@@ -40,6 +43,7 @@ export function Preview({
   const frame = frameProps(project, (file) => mediaUrl(project.id, file));
   const frameKey = JSON.stringify(frame); // stable key so the Player only re-renders when the frame changes
   const zoomsKey = JSON.stringify(zooms);
+  const captionsKey = JSON.stringify(captions);
   const comp = compositionSize(project.video.width, project.video.height, "1080p", frame.framed);
   const aspect = comp.width / comp.height;
 
@@ -66,8 +70,9 @@ export function Preview({
       muteOriginal: v.mode === "ai",
       frame: JSON.parse(frameKey),
       zooms: JSON.parse(zoomsKey),
+      captions: JSON.parse(captionsKey),
     }),
-    [project.id, project.video.file, plan, v.mode, frameKey, zoomsKey],
+    [project.id, project.video.file, plan, v.mode, frameKey, zoomsKey, captionsKey],
   );
 
   // Paragraphs that will play silently because their AI voice is missing or outdated.

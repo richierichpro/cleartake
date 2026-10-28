@@ -15,8 +15,8 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 10 – Visuals tab (Background)
 - [–] Step 11 – Music tab: skipped by decision (not important for the hackathon). Voice loudness normalization skipped with it; revisit only if mixing original + AI voice or adding music.
 - [x] Step 12 – Zoom detection (debug only)
-- [x] Step 13 – Zooms tab (awaiting "works")
-- [ ] Step 14 – Captions
+- [x] Step 13 – Zooms tab
+- [x] Step 14 – Captions (awaiting "works")
 - [ ] Step 15 – Finalize + polish
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
@@ -82,6 +82,7 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
   - Composition: `useZoomTransform` = spring in at start, spring out after end; `scale(s) translate(-left%, -top%)` on the recording inside the rounded frame.
   - Editor (`use-zooms.ts`): add at a time (refused within 3s of another), drag move/resize on the zoom track (clamped by the gap rule), Delete removes the selected zoom (otherwise Delete cuts), Esc deselects. Auto-detect turns the Step 12 suggestions into zooms on click only, each at least 3s of *output* (sped-up paragraphs compress source time). Selecting a zoom opens the Zooms tab and seeks into it; while paused inside the selected zoom, the Player leaves that zoom out and shows a dashed window + focus dot (clicking the video sets the focus); pressing play always plays every zoom, no need to deselect.
   - The left panel's tab is now controlled by the editor (`tab` / `onTab`).
+- Captions (Step 14): `project.captions = { enabled }` (off by default), toggled by the captions button in the control bar. Built from the **AI voice only**: each clip stores `words` (from the ElevenLabs character timestamps, `alignmentToWords`); clips voiced earlier are backfilled from their cached `voice-{hash}.json` on GET /api/projects/[id] (no ElevenLabs call). `lib/captions.ts` `buildCaptions(project, plan)` (pure, shared by the editor and export): each clip's words shifted by its `outputStart`; a caption ends at a sentence end, a pause ≥ 0.4s or the paragraph end; longer ones (> 36 chars / 7 words) are split evenly; each stays 0.4s after its last word but never overlaps the next. Composition `<Captions>`: dark rounded pill at the bottom of the canvas (above the zoom, so it never zooms), 44px@1080p system font, the word being spoken in #FF5C35, a short fade/slide in. The button is inactive with a reason in original-voice mode or when no voice is generated. Debug: "Captions" lists every caption, its length and why it ended (click seeks).
 - Toasts are top-right under the top bar so they never cover the timeline.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
@@ -120,7 +121,7 @@ src/
     editor/visuals-tab.tsx           Background / Scenes sub-tabs; on/off, 8 preset swatches (mini window preview, ✓), image upload/replace/remove, shadow select, corners + padding slider with number box
     editor/voice-tab.tsx             Use original voice toggle, voice dropdown (name + gender/accent/style, preview button), model, credits bar
     editor/debug-drawer.tsx          Debug drawer: Cleanup & sync (duration before → after, per-paragraph decisions, cleanup actions, Re-analyze); segmentation table + Rebuild; rewrite comparison + Run again
-    editor/use-zooms.ts              zoom selection/add/update/setRange/remove/autoDetect; `playing` = zooms for the Player (selected one left out)
+    editor/use-zooms.ts              zoom selection/add/update/setRange/remove/autoDetect (the editor leaves the selected zoom out of the Player only while aiming)
     editor/zooms-tab.tsx             "Add zoom effects" toggle, Auto-detect, selected zoom (level slider, focus hint, enabled, delete), zoom list
     editor/use-edits.ts              selection + split / cutSelection / restoreCut / setTrim, each with an Undo toast
     editor/use-zoom-detection.ts     loads cached zoom candidates when Debug opens; Re-detect; show-boxes toggle
@@ -131,7 +132,7 @@ src/
     editor/export-button.tsx         Export button (shows % while rendering) + popover: idle / rendering (stage + bar) / ready (Download, Export again) / error; silent-paragraph warning; toast when done
     editor/left-panel.tsx            collapsible panel, 5 tabs with animated underline, empty states
     editor/preview.tsx               dot-grid canvas, aspect-fit framed Remotion <Player> of DemoVideo, play overlay, "N paragraphs will play silently" pill, codec error fallback
-    editor/control-bar.tsx           captions (inactive), ✂ split, "Cut Xs" when something is selected, play, time, volume, timeline zoom
+    editor/control-bar.tsx           captions toggle, ✂ split, "Cut Xs" when something is selected, play, time, volume, timeline zoom
     editor/timeline.tsx              zoom track (blocks, hover ghost "Add zoom" / "Too close", drag to move, edges to resize); (output time) video track = plan pieces (paragraph number, speed badge, freeze hatch, cut markers), voice track = clips where they play (dashed if missing/outdated), debug strips while the drawer is open (activity: speaking/moving/still; plan: cut/4×/freeze ticks); ruler (adaptive ticks), filmstrip split at paragraph boundaries (deleted ones faded), voice track (real AI clip length, orange dot if outdated, dashed if no voice yet, amber if the clip overruns its paragraph), hover guide, draggable playhead, auto-follow
     ui/                              shadcn: alert-dialog, button, input, skeleton, slider, sonner, tooltip
   lib/
@@ -153,6 +154,7 @@ src/
     edits.ts                         (shared) removedRanges, subtractRanges, isSegmentRemoved, newCutId
     visuals.ts                       (shared) presets, SHADOWS, DEFAULT_VISUALS, visualsOf, frameProps
     zooms.ts                         (shared) ZOOM_LIMITS, outputZooms, zoomWindow, zoomFromSuggestion, fitsBetween
+    captions.ts                      (shared) CAPTION_CONFIG, alignmentToWords, buildCaptions, captionsOn
     zoom-detect.ts                   (pure) ZOOM_DETECT_CONFIG, detectZoomCandidates (pixel-change regions; backup signal)
     zoom-suggest.ts                  suggestZooms: LLM mentions → transcript time → OCR box; typing backup; 3s spacing
     ocr.ts                           ocrFrames(video, times): builds .cache/ocr from scripts/ocr.swift, returns text boxes
@@ -214,7 +216,8 @@ data/projects/{id}/                  gitignored
       "deleted": false,                  // Step 5; restorable; Step 9 → cut
       "voice": {                         // Step 5; last generated clip
         "file": "voice-13ed91ba5bb7cc37.mp3", "text": "…", "voiceId": "XrExE9yKIg1WjnnlVkGX",
-        "model": "eleven_flash_v2_5", "duration": 3.3
+        "model": "eleven_flash_v2_5", "duration": 3.3,
+        "words": [{ "text": "This", "start": 0, "end": 0.23 }]   // Step 14; clip seconds
       },
       "breakReason": "pause",            // pause | length | end | split
       "pauseAfter": 6.5
@@ -229,6 +232,8 @@ Also on project.json: `"voice": { "mode": "ai" | "original", "voiceId", "voiceNa
 `"visuals": { "background": { "enabled", "preset", "image" }, "shadow": "none"|"light"|"medium"|"strong", "radius": px@1080p, "padding": % }` (Step 10).
 
 `"zooms": { "enabled": true, "items": [{ "id", "start", "end" (source s), "x", "y" (0–1), "scale" (1.2–2.5), "enabled" }] }` (Step 13).
+
+`"captions": { "enabled": true }` (Step 14; off when missing).
 
 `"export": { "status": "rendering" | "done" | "error", "quality": "1080p" | "1440p" | "original", "width", "height", "stage", "progress": 0–1, "startedAt", "finishedAt", "file", "size", "duration", "error" }` (Step 8).
 
