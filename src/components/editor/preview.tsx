@@ -10,6 +10,8 @@ import { isSegmentRemoved } from "@/lib/edits";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
 import { frameProps, recordingBox } from "@/lib/visuals";
 import type { ZoomCandidate } from "@/lib/zoom-detect";
+import { zoomWindow, type OutputZoom } from "@/lib/zooms";
+import type { Zoom } from "@/lib/types";
 import type { SyncPlan } from "@/lib/sync";
 import type { Project } from "@/lib/types";
 import { compositionSize, DemoVideo, FPS, type DemoVideoProps } from "@/remotion/demo-video";
@@ -22,17 +24,22 @@ export function Preview({
   plan,
   playback,
   debugBoxes = [],
+  zooms,
+  aim,
 }: {
   project: Project;
   plan: SyncPlan;
   playback: Playback;
   debugBoxes?: ZoomCandidate[]; // Step 12: detected change regions to outline (debug only)
+  zooms: OutputZoom[]; // Step 13: what the Player plays (output seconds)
+  aim?: { zoom: Zoom; onFocus: (x: number, y: number) => void } | null; // a selected zoom: click to set its focus
 }) {
   const { attachPlayer, playing, toggle } = playback;
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const frame = frameProps(project, (file) => mediaUrl(project.id, file));
   const frameKey = JSON.stringify(frame); // stable key so the Player only re-renders when the frame changes
+  const zoomsKey = JSON.stringify(zooms);
   const comp = compositionSize(project.video.width, project.video.height, "1080p", frame.framed);
   const aspect = comp.width / comp.height;
 
@@ -58,8 +65,9 @@ export function Preview({
       voice: plan.voice.map((x) => ({ src: mediaUrl(project.id, x.file), outputStart: x.outputStart, duration: x.duration })),
       muteOriginal: v.mode === "ai",
       frame: JSON.parse(frameKey),
+      zooms: JSON.parse(zoomsKey),
     }),
-    [project.id, project.video.file, plan, v.mode, frameKey],
+    [project.id, project.video.file, plan, v.mode, frameKey, zoomsKey],
   );
 
   // Paragraphs that will play silently because their AI voice is missing or outdated.
@@ -135,8 +143,43 @@ export function Preview({
               ));
             })()}
 
+          {/* Aiming a selected zoom: full frame, dashed window of what the zoom shows, click to move the focus */}
+          {aim &&
+            (() => {
+              const rec = recordingBox(JSON.parse(frameKey), size.w, size.h);
+              const win = zoomWindow(aim.zoom.x, aim.zoom.y, aim.zoom.scale);
+              return (
+                <div
+                  className="absolute z-10 cursor-crosshair"
+                  style={{ left: rec.left, top: rec.top, width: rec.width, height: rec.height }}
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    aim.onFocus((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+                  }}
+                >
+                  <div className="pointer-events-none absolute inset-0 bg-black/25" />
+                  <div
+                    className="pointer-events-none absolute rounded-md border-2 border-dashed border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.25)] transition-all duration-150"
+                    style={{
+                      left: `${win.left * 100}%`,
+                      top: `${win.top * 100}%`,
+                      width: `${win.width * 100}%`,
+                      height: `${win.height * 100}%`,
+                    }}
+                  />
+                  <div
+                    className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow transition-all duration-150"
+                    style={{ left: `${aim.zoom.x * 100}%`, top: `${aim.zoom.y * 100}%` }}
+                  />
+                  <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs text-white backdrop-blur">
+                    Click to choose where this zoom points · {aim.zoom.scale.toFixed(1)}×
+                  </div>
+                </div>
+              );
+            })()}
+
           <AnimatePresence>
-            {!playing && (
+            {!playing && !aim && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}

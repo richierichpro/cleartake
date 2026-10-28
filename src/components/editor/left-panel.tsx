@@ -46,9 +46,16 @@ const TABS = [
 export type TabId = (typeof TABS)[number]["id"];
 
 // Tabs without content yet show their empty state.
-export function LeftPanel({ content }: { content: Partial<Record<TabId, React.ReactNode>> }) {
+export function LeftPanel({
+  content,
+  tab,
+  onTab,
+}: {
+  content: Partial<Record<TabId, React.ReactNode>>;
+  tab: TabId; // controlled by the editor (e.g. selecting a zoom opens the Zooms tab)
+  onTab: (tab: TabId) => void;
+}) {
   const [open, setOpen] = useState(true);
-  const [tab, setTab] = useState<TabId>("script");
   const active = TABS.find((t) => t.id === tab)!;
 
   return (
@@ -64,7 +71,7 @@ export function LeftPanel({ content }: { content: Partial<Record<TabId, React.Re
             {TABS.map((t) => (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id)}
+                onClick={() => onTab(t.id)}
                 className={cn(
                   "relative flex h-11 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors duration-150",
                   tab === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground",

@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Film, Mic, Scissors, Snowflake } from "lucide-react";
+import { Film, Mic, Plus, Scissors, Snowflake, ZoomIn } from "lucide-react";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { clipStatus, estimateSeconds } from "@/lib/voice-settings";
+import { toast } from "sonner";
+import { fitsBetween, ZOOM_LIMITS } from "@/lib/zooms";
 import { outputToSource, pieceLength, segmentRanges, sourceToOutput, SYNC_CONFIG, type SyncPlan } from "@/lib/sync";
 import type { Edits } from "./use-edits";
+import type { Zooms } from "./use-zooms";
 import type { Segment, VoiceSettings } from "@/lib/types";
 import type { Playback } from "./use-playback";
 
@@ -14,7 +17,9 @@ const PAD = 16; // horizontal breathing room so 0:00 and the end aren't glued to
 const RULER_H = 28;
 const VIDEO_TOP = RULER_H + 12;
 const VOICE_TOP = VIDEO_TOP + 56 + 8;
-const STRIP_TOP = VOICE_TOP + 32 + 6; // debug strips: activity, then plan
+const ZOOM_TOP = VOICE_TOP + 32 + 6; // zoom track (Step 13)
+const ZOOM_H = 22;
+const STRIP_TOP = ZOOM_TOP + ZOOM_H + 6; // debug strips: activity, then plan
 
 export const STATE_COLOR = { speaking: "#FF8A6B", moving: "#7C93F6", still: "#E1E1E6" } as const;
 export const ACTION_COLOR = { cut: "#3A3A40", fast: "#7C93F6", freeze: "#FF5C35" } as const;
@@ -43,19 +48,23 @@ interface Props {
   plan: SyncPlan; // everything on the timeline is in output (edited video) time
   debug: boolean; // show activity + plan strips
   edits: Edits; // trim handles, splits, selection, cut markers (Step 9)
+  zooms: Zooms; // zoom track (Step 13)
 }
 
 type Drag =
   | { mode: "scrub" }
   | { mode: "select"; x0: number; t0: number; moved: boolean }
-  | { mode: "trim"; side: "start" | "end"; t: number };
+  | { mode: "trim"; side: "start" | "end"; t: number }
+  | { mode: "zoom"; id: string; kind: "move" | "start" | "end"; t0: number; s0: number; e0: number; s: number; e: number; moved: boolean }
+  | { mode: "zoom-add"; t: number };
 
-export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, debug, edits }: Props) {
+export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, debug, edits, zooms }: Props) {
   const { currentTime, seek } = playback;
   const duration = playback.duration || 1;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [viewW, setViewW] = useState(0);
   const [hoverT, setHoverT] = useState<number | null>(null);
+  const [hoverZoomLane, setHoverZoomLane] = useState(false);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragging = drag !== null;
 
@@ -167,7 +176,7 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
   }, [zoom]);
 
   return (
-    <div className={cn("shrink-0 border-t bg-white transition-[height]", debug ? "h-[176px]" : "h-[164px]")}>
+    <div className={cn("shrink-0 border-t bg-white transition-[height]", debug ? "h-[204px]" : "h-[192px]")}>
       <div
         ref={scrollerRef}
         className="scroll-thin relative h-full overflow-x-auto overflow-y-hidden select-none"
@@ -176,8 +185,9 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
           e.currentTarget.setPointerCapture(e.pointerId);
           const t = timeAt(e.clientX);
           const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
-          // On the video track: click selects a piece, drag selects a range. Elsewhere: scrub.
+          // Video track: click selects a piece, drag selects a range. Zoom track: click adds a zoom. Elsewhere: scrub.
           if (y >= VIDEO_TOP && y <= VIDEO_TOP + 56) setDrag({ mode: "select", x0: e.clientX, t0: t, moved: false });
+          else if (y >= ZOOM_TOP && y <= ZOOM_TOP + ZOOM_H) setDrag({ mode: "zoom-add", t });
           else {
             setDrag({ mode: "scrub" });
             seek(t);
@@ -186,6 +196,15 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
         onPointerMove={(e) => {
           const t = timeAt(e.clientX);
           setHoverT(t);
+          const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+          setHoverZoomLane(y >= ZOOM_TOP - 2 && y <= ZOOM_TOP + ZOOM_H + 2);
+          if (drag?.mode === "zoom") {
+            const d = t - drag.t0;
+            const moved = drag.moved || Math.abs(d) > 0.05;
+            if (drag.kind === "move") setDrag({ ...drag, s: drag.s0 + d, e: drag.e0 + d, moved });
+            else if (drag.kind === "start") setDrag({ ...drag, s: Math.min(drag.s0 + d, drag.e0 - ZOOM_LIMITS.minLength), moved });
+            else setDrag({ ...drag, e: Math.max(drag.e0 + d, drag.s0 + ZOOM_LIMITS.minLength), moved });
+          }
           if (drag?.mode === "scrub") seek(t);
           else if (drag?.mode === "trim") setDrag({ ...drag, t });
           else if (drag?.mode === "select" && (drag.moved || Math.abs(e.clientX - drag.x0) > 4)) {
@@ -200,9 +219,19 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
             seek(t);
             selectPieceAt(t);
           } else if (drag?.mode === "trim") commitTrim(drag);
+          else if (drag?.mode === "zoom-add") zooms.addAt(drag.t);
+          else if (drag?.mode === "zoom") {
+            zooms.select(drag.id);
+            if (drag.moved && !zooms.setRange(drag.id, drag.s, drag.e)) {
+              toast("Too close to another zoom", { description: `Keep zooms at least ${ZOOM_LIMITS.minGap}s apart.` });
+            }
+          }
           setDrag(null);
         }}
-        onPointerLeave={() => setHoverT(null)}
+        onPointerLeave={() => {
+          setHoverT(null);
+          setHoverZoomLane(false);
+        }}
       >
         {viewW > 0 && (
           <div className="relative h-full cursor-text" style={{ width: contentW }}>
@@ -324,6 +353,85 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
                 style={{ top: VOICE_TOP, left: xOf(0), width: duration * pps }}
               >
                 {segments ? "No narration" : "Your voice will appear here after transcription"}
+              </div>
+            )}
+
+            {/* Zoom track */}
+            <div
+              className={cn("absolute rounded-md transition-colors", hoverZoomLane ? "bg-brand/[0.04]" : "bg-[#FAFAFB]")}
+              style={{ top: ZOOM_TOP, left: xOf(0), width: duration * pps, height: ZOOM_H }}
+            />
+            {zooms.timeline.map((z) => {
+              const live = drag?.mode === "zoom" && drag.id === z.id ? { s: drag.s, e: drag.e } : { s: z.outStart, e: z.outEnd };
+              const selected = zooms.selectedId === z.id;
+              const on = zooms.enabled && z.enabled;
+              const startDrag = (e: React.PointerEvent, kind: "move" | "start" | "end") => {
+                e.stopPropagation();
+                scrollerRef.current?.setPointerCapture(e.pointerId);
+                const t = timeAt(e.clientX);
+                setDrag({ mode: "zoom", id: z.id, kind, t0: t, s0: z.outStart, e0: z.outEnd, s: z.outStart, e: z.outEnd, moved: false });
+              };
+              return (
+                <div
+                  key={z.id}
+                  onPointerDown={(e) => startDrag(e, "move")}
+                  className={cn(
+                    "group/zoom absolute z-[2] flex cursor-grab items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[10.5px] font-medium transition-colors duration-150 active:cursor-grabbing",
+                    selected
+                      ? "border-brand bg-brand text-white shadow-sm"
+                      : on
+                        ? "border-brand/40 bg-brand/[0.1] text-brand hover:bg-brand/[0.16]"
+                        : "border-dashed border-muted-foreground/40 bg-white text-muted-foreground",
+                  )}
+                  style={{ top: ZOOM_TOP, height: ZOOM_H, left: xOf(live.s), width: Math.max(10, (live.e - live.s) * pps) }}
+                >
+                  <ZoomIn className="size-3 shrink-0" />
+                  <span className="truncate tabular-nums">{z.scale.toFixed(1)}×</span>
+                  {(["start", "end"] as const).map((side) => (
+                    <span
+                      key={side}
+                      onPointerDown={(e) => startDrag(e, side)}
+                      className={cn(
+                        "absolute inset-y-0 w-1.5 cursor-ew-resize opacity-0 transition-opacity group-hover/zoom:opacity-100",
+                        side === "start" ? "left-0" : "right-0",
+                        selected ? "bg-white/40" : "bg-brand/30",
+                      )}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+            {hoverZoomLane &&
+              hoverT !== null &&
+              !drag &&
+              !zooms.timeline.some((z) => hoverT >= z.outStart && hoverT <= z.outEnd) && (
+                (() => {
+                  const end = Math.min(duration, hoverT + ZOOM_LIMITS.defaultLength);
+                  const ok = fitsBetween(
+                    zooms.timeline.map((z) => ({ id: z.id, start: z.outStart, end: z.outEnd })),
+                    hoverT,
+                    end,
+                  );
+                  return (
+                    <div
+                      className={cn(
+                        "pointer-events-none absolute z-[1] flex items-center gap-1 rounded-md border border-dashed px-1.5 text-[10.5px]",
+                        ok ? "border-brand/50 text-brand" : "border-muted-foreground/30 text-muted-foreground",
+                      )}
+                      style={{ top: ZOOM_TOP, height: ZOOM_H, left: xOf(hoverT), width: (end - hoverT) * pps }}
+                    >
+                      {ok && <Plus className="size-3 shrink-0" />}
+                      <span className="truncate">{ok ? "Add zoom" : `Too close · keep ${ZOOM_LIMITS.minGap}s apart`}</span>
+                    </div>
+                  );
+                })()
+              )}
+            {zooms.timeline.length === 0 && !hoverZoomLane && (
+              <div
+                className="pointer-events-none absolute flex items-center pl-2 text-[10.5px] text-muted-foreground/70"
+                style={{ top: ZOOM_TOP, height: ZOOM_H, left: xOf(0) }}
+              >
+                Hover here to add a zoom
               </div>
             )}
 

@@ -12,7 +12,7 @@ import { voiceOf } from "@/lib/voice-settings";
 import type { Project } from "@/lib/types";
 import { ControlBar, ZOOM_LEVELS } from "./control-bar";
 import { DebugDrawer } from "./debug-drawer";
-import { LeftPanel } from "./left-panel";
+import { LeftPanel, type TabId } from "./left-panel";
 import { Preview } from "./preview";
 import { ScriptView } from "./script-view";
 import { VoiceTab } from "./voice-tab";
@@ -22,6 +22,8 @@ import { TopBar } from "./top-bar";
 import { usePlayback } from "./use-playback";
 import { useSyncPlan } from "./use-sync-plan";
 import { useEdits } from "./use-edits";
+import { useZooms } from "./use-zooms";
+import { ZoomsTab } from "./zooms-tab";
 import { useZoomDetection } from "./use-zoom-detection";
 
 export function Editor({ id }: { id: string }) {
@@ -53,6 +55,17 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
   const plan = useMemo(() => sync.plan ?? identityPlan(project), [sync.plan, project]);
   const playback = usePlayback(plan.outputDuration);
   const edits = useEdits(project, plan, onChange, playback.currentTime);
+  const [tab, setTab] = useState<TabId>("script");
+  // Selecting a zoom opens its controls and moves the playhead into it, so you aim on the right frame.
+  const { seek } = playback;
+  const onZoomSelected = useCallback(
+    (outputStart: number | null) => {
+      setTab("zooms");
+      if (outputStart !== null) seek(outputStart + 0.3);
+    },
+    [seek],
+  );
+  const zooms = useZooms(project, plan, onChange, onZoomSelected);
 
   const [zoomIndex, setZoomIndex] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -74,6 +87,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
   // Space = play/pause, S = split at playhead, Delete = cut selection, Esc = clear selection
   // (unless the user is typing).
   const { split, cutSelection, setSelection } = edits;
+  const { selectedId: selectedZoom, remove: removeZoom, select: selectZoom } = zooms;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
@@ -82,12 +96,17 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
         e.preventDefault();
         toggle();
       } else if (e.key === "s" || e.key === "S") split();
-      else if (e.key === "Delete" || e.key === "Backspace") cutSelection();
-      else if (e.key === "Escape") setSelection(null);
+      else if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedZoom) removeZoom(selectedZoom);
+        else cutSelection();
+      } else if (e.key === "Escape") {
+        setSelection(null);
+        selectZoom(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, split, cutSelection, setSelection]);
+  }, [toggle, split, cutSelection, setSelection, selectedZoom, removeZoom, selectZoom]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
@@ -96,9 +115,12 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
       />
       <div className="flex min-h-0 flex-1">
         <LeftPanel
+          tab={tab}
+          onTab={setTab}
           content={{
             script: <ScriptView project={project} plan={plan} playback={playback} onChange={onChange} />,
             visuals: <VisualsTab project={project} onChange={onChange} />,
+            zooms: <ZoomsTab zooms={zooms} />,
             voice: (
               <VoiceTab project={project} onChange={onChange} volume={playback.muted ? 0 : playback.volume} />
             ),
@@ -107,7 +129,14 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
         <main className="flex min-w-0 flex-1 flex-col">
           {/* The Debug drawer sits beside the preview (not over it), so nothing on the video is hidden. */}
           <div className="flex min-h-0 flex-1">
-            <Preview project={project} plan={plan} playback={playback} debugBoxes={debugBoxes} />
+            <Preview
+              project={project}
+              plan={plan}
+              playback={playback}
+              debugBoxes={debugBoxes}
+              zooms={zooms.playing}
+              aim={zooms.selected ? { zoom: zooms.selected, onFocus: (x, y) => zooms.update(zooms.selected!.id, { x, y }) } : null}
+            />
             <AnimatePresence>
               {debugOpen && (
                 <DebugDrawer
@@ -132,6 +161,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
             plan={plan}
             debug={debugOpen}
             edits={edits}
+            zooms={zooms}
           />
         </main>
       </div>

@@ -15,8 +15,9 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 10 – Visuals tab (Background)
 - [–] Step 11 – Music tab: skipped by decision (not important for the hackathon). Voice loudness normalization skipped with it; revisit only if mixing original + AI voice or adding music.
 - [x] Step 12 – Zoom detection (debug only)
-- [ ] Step 13 – Zooms tab
-- [ ] Steps 14–15
+- [x] Step 13 – Zooms tab (awaiting "works")
+- [ ] Step 14 – Captions
+- [ ] Step 15 – Finalize + polish
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
 
@@ -77,6 +78,10 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
   - Limitation: zooms only appear where the narration names on-screen text; the Telegram recording names one element ("Plan Our Trip"). Manual zooms (Step 13) cover the rest.
   - Debug: "Zoom suggestions" lists each zoom (why: "You said X → on screen Y · screen changed there") and every mention with its status; boxes are outlined on the preview while they happen (+0.8s). `recordingBox()` in lib/visuals.ts gives the recording's rect on the canvas (shared with the composition).
   - The Debug drawer now sits beside the preview (the preview shrinks) instead of covering it.
+- Zooms (Step 13): `project.zooms = { enabled, items: [{id, start, end, x, y, scale, enabled}] }`, **start/end in source time** (they stay on the right moment when the edit retimes); x/y = focus 0–1 of the recording; scale 1.2–2.5. `lib/zooms.ts`: ZOOM_LIMITS (3s min gap, 3s default length, 0.7s spring in/out), `outputZooms(project, plan, exclude)` → composition `zooms` prop (output seconds), `zoomWindow()` (visible part, clamped inside the frame), `zoomFromSuggestion()` (scale so the box ×2.5 fills the view), `fitsBetween()`.
+  - Composition: `useZoomTransform` = spring in at start, spring out after end; `scale(s) translate(-left%, -top%)` on the recording inside the rounded frame.
+  - Editor (`use-zooms.ts`): add at a time (refused within 3s of another), drag move/resize on the zoom track (clamped by the gap rule), Delete removes the selected zoom (otherwise Delete cuts), Esc deselects. Auto-detect turns the Step 12 suggestions into zooms on click only, each at least 3s of *output* (sped-up paragraphs compress source time). Selecting a zoom opens the Zooms tab and seeks into it; while selected, the Player leaves that zoom out and shows a dashed window + focus dot; clicking the video sets the focus.
+  - The left panel's tab is now controlled by the editor (`tab` / `onTab`).
 - Toasts are top-right under the top bar so they never cover the timeline.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
@@ -115,6 +120,8 @@ src/
     editor/visuals-tab.tsx           Background / Scenes sub-tabs; on/off, 8 preset swatches (mini window preview, ✓), image upload/replace/remove, shadow select, corners + padding slider with number box
     editor/voice-tab.tsx             Use original voice toggle, voice dropdown (name + gender/accent/style, preview button), model, credits bar
     editor/debug-drawer.tsx          Debug drawer: Cleanup & sync (duration before → after, per-paragraph decisions, cleanup actions, Re-analyze); segmentation table + Rebuild; rewrite comparison + Run again
+    editor/use-zooms.ts              zoom selection/add/update/setRange/remove/autoDetect; `playing` = zooms for the Player (selected one left out)
+    editor/zooms-tab.tsx             "Add zoom effects" toggle, Auto-detect, selected zoom (level slider, focus hint, enabled, delete), zoom list
     editor/use-edits.ts              selection + split / cutSelection / restoreCut / setTrim, each with an Undo toast
     editor/use-zoom-detection.ts     loads cached zoom candidates when Debug opens; Re-detect; show-boxes toggle
     editor/use-sync-plan.ts          loads motion + transcript, auto-analyzes old projects, memoizes buildSyncPlan
@@ -125,7 +132,7 @@ src/
     editor/left-panel.tsx            collapsible panel, 5 tabs with animated underline, empty states
     editor/preview.tsx               dot-grid canvas, aspect-fit framed Remotion <Player> of DemoVideo, play overlay, "N paragraphs will play silently" pill, codec error fallback
     editor/control-bar.tsx           captions (inactive), ✂ split, "Cut Xs" when something is selected, play, time, volume, timeline zoom
-    editor/timeline.tsx              (output time) video track = plan pieces (paragraph number, speed badge, freeze hatch, cut markers), voice track = clips where they play (dashed if missing/outdated), debug strips while the drawer is open (activity: speaking/moving/still; plan: cut/4×/freeze ticks); ruler (adaptive ticks), filmstrip split at paragraph boundaries (deleted ones faded), voice track (real AI clip length, orange dot if outdated, dashed if no voice yet, amber if the clip overruns its paragraph), hover guide, draggable playhead, auto-follow
+    editor/timeline.tsx              zoom track (blocks, hover ghost "Add zoom" / "Too close", drag to move, edges to resize); (output time) video track = plan pieces (paragraph number, speed badge, freeze hatch, cut markers), voice track = clips where they play (dashed if missing/outdated), debug strips while the drawer is open (activity: speaking/moving/still; plan: cut/4×/freeze ticks); ruler (adaptive ticks), filmstrip split at paragraph boundaries (deleted ones faded), voice track (real AI clip length, orange dot if outdated, dashed if no voice yet, amber if the clip overruns its paragraph), hover guide, draggable playhead, auto-follow
     ui/                              shadcn: alert-dialog, button, input, skeleton, slider, sonner, tooltip
   lib/
     types.ts                         Project types
@@ -145,6 +152,7 @@ src/
     client.ts                        browser helpers (mediaUrl, readVideoInfo, uploadVideo, updateProject)
     edits.ts                         (shared) removedRanges, subtractRanges, isSegmentRemoved, newCutId
     visuals.ts                       (shared) presets, SHADOWS, DEFAULT_VISUALS, visualsOf, frameProps
+    zooms.ts                         (shared) ZOOM_LIMITS, outputZooms, zoomWindow, zoomFromSuggestion, fitsBetween
     zoom-detect.ts                   (pure) ZOOM_DETECT_CONFIG, detectZoomCandidates (pixel-change regions; backup signal)
     zoom-suggest.ts                  suggestZooms: LLM mentions → transcript time → OCR box; typing backup; 3s spacing
     ocr.ts                           ocrFrames(video, times): builds .cache/ocr from scripts/ocr.swift, returns text boxes
@@ -219,6 +227,8 @@ Also on project.json: `"voice": { "mode": "ai" | "original", "voiceId", "voiceNa
 `"cuts": [{ "id", "start", "end", "segmentId"? }]`, `"trim": { "start", "end" }`, `"splits": [seconds]` (Step 9, source time).
 
 `"visuals": { "background": { "enabled", "preset", "image" }, "shadow": "none"|"light"|"medium"|"strong", "radius": px@1080p, "padding": % }` (Step 10).
+
+`"zooms": { "enabled": true, "items": [{ "id", "start", "end" (source s), "x", "y" (0–1), "scale" (1.2–2.5), "enabled" }] }` (Step 13).
 
 `"export": { "status": "rendering" | "done" | "error", "quality": "1080p" | "1440p" | "original", "width", "height", "stage", "progress": 0–1, "startedAt", "finishedAt", "file", "size", "duration", "error" }` (Step 8).
 
