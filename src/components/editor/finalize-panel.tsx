@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { Check, ChevronRight, Flag, Loader2, MessageSquareQuote, RotateCw, Sparkles, TriangleAlert, Type, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DIRECTOR_CONFIG, placeDirector, scriptKey, type Placement } from "@/lib/director";
@@ -149,6 +150,13 @@ function Plan({
   finalize: Finalize;
 }) {
   const { edit } = finalize;
+  // Removes the item that hides another one (too close in time), with Undo.
+  function showInstead(otherId: string, kind: "steps" | "callouts") {
+    const before = d;
+    const other = kind === "steps" ? d.steps.find((y) => y.id === otherId)?.label : d.callouts.find((y) => y.id === otherId)?.text;
+    edit((x) => ({ ...x, [kind]: x[kind].filter((y) => y.id !== otherId) }));
+    toast(`Removed “${other ?? "item"}”`, { action: { label: "Undo", onClick: () => edit(() => before) } });
+  }
   const m = DIRECTOR_CONFIG.max;
   const byTime = <T extends { id: string }>(items: T[]) =>
     [...items].sort((a, b) => (places[a.id]?.time ?? Infinity) - (places[b.id]?.time ?? Infinity));
@@ -171,6 +179,8 @@ function Plan({
             detail={s.phrase ? `when you say “${s.phrase}”` : undefined}
             onChange={(label) => edit((x) => ({ ...x, steps: x.steps.map((y) => (y.id === s.id ? { ...y, label } : y)) }))}
             onRemove={() => edit((x) => ({ ...x, steps: x.steps.filter((y) => y.id !== s.id) }))}
+            onShowInstead={(other) => showInstead(other, "steps")}
+            otherLabel={(other) => d.steps.find((y) => y.id === other)?.label}
           />
         ))}
       </Section>
@@ -191,6 +201,8 @@ function Plan({
             detail={c.phrase ? `when you say “${c.phrase}”` : undefined}
             onChange={(text) => edit((x) => ({ ...x, callouts: x.callouts.map((y) => (y.id === c.id ? { ...y, text } : y)) }))}
             onRemove={() => edit((x) => ({ ...x, callouts: x.callouts.filter((y) => y.id !== c.id) }))}
+            onShowInstead={(other) => showInstead(other, "callouts")}
+            otherLabel={(other) => d.callouts.find((y) => y.id === other)?.text}
           />
         ))}
       </Section>
@@ -308,6 +320,8 @@ function ItemRow({
   detail,
   onChange,
   onRemove,
+  onShowInstead,
+  otherLabel,
 }: {
   place?: Placement;
   playback: Playback;
@@ -316,11 +330,14 @@ function ItemRow({
   detail?: string;
   onChange: (v: string) => void;
   onRemove: () => void;
+  onShowInstead: (otherId: string) => void; // removes the item this one is hidden by
+  otherLabel: (otherId: string) => string | undefined;
 }) {
   const off = !place || place.time === null || place.hidden;
+  const blocker = place?.hiddenBy;
   return (
-    <div className={cn("group rounded-lg", off && "opacity-60")}>
-      <div className="flex items-center gap-2">
+    <div className="group rounded-lg">
+      <div className={cn("flex items-center gap-2", off && "opacity-60")}>
         <button
           onClick={() => place?.time != null && playback.seek(place.time)}
           disabled={place?.time == null}
@@ -328,7 +345,14 @@ function ItemRow({
         >
           {place?.time != null ? formatTime(place.time) : "--:--"}
         </button>
-        <Input value={value} maxLength={max} onChange={(e) => onChange(e.target.value)} className="h-8" />
+        <div className="relative min-w-0 flex-1">
+          <Input value={value} maxLength={max} onChange={(e) => onChange(e.target.value)} className={cn("h-8", place?.hidden && "pr-16")} />
+          {place?.hidden && (
+            <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              Hidden
+            </span>
+          )}
+        </div>
         <button
           onClick={onRemove}
           aria-label="Remove"
@@ -343,6 +367,14 @@ function ItemRow({
           {detail && place?.note && " · "}
           {place?.note && <span className={cn(place.hidden && "text-[#B5471F]")}>{place.note}</span>}
         </p>
+      )}
+      {blocker && (
+        <button
+          onClick={() => onShowInstead(blocker)}
+          className="mt-1 ml-14 rounded-md text-[11px] font-medium text-brand underline-offset-4 hover:underline"
+        >
+          Show this one instead{otherLabel(blocker) ? ` (removes “${otherLabel(blocker)}”)` : ""}
+        </button>
       )}
     </div>
   );

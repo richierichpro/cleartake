@@ -68,6 +68,7 @@ export interface Placement {
   time: number | null; // output seconds; null = not in the video
   note?: string; // why it moved or won't show
   hidden?: boolean; // kept in the plan but not shown (e.g. a callout too close to another)
+  hiddenBy?: string; // id of the item it's too close to (removing that one shows this one)
 }
 
 /**
@@ -127,13 +128,14 @@ export function placeDirector(project: Project, plan: SyncPlan, transcript: Tran
 }
 
 /** In time order, hides items closer than `gap` seconds to the previous shown one. */
-function spaceOut(items: { place: Placement }[], gap: number, what: string) {
-  let last = -Infinity;
-  for (const { place } of [...items].sort((a, b) => (a.place.time ?? Infinity) - (b.place.time ?? Infinity))) {
+function spaceOut(items: { id: string; place: Placement }[], gap: number, what: string) {
+  let last: { id: string; time: number } | null = null;
+  for (const { id, place } of [...items].sort((a, b) => (a.place.time ?? Infinity) - (b.place.time ?? Infinity))) {
     if (place.time === null) continue;
-    if (place.time - last < gap) {
+    if (last && place.time - last.time < gap) {
       place.hidden = true;
+      place.hiddenBy = last.id;
       place.note = [place.note, `within ${gap}s of another ${what}`].filter(Boolean).join(" · ");
-    } else last = place.time;
+    } else last = { id, time: place.time };
   }
 }
