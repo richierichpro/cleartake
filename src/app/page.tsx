@@ -18,11 +18,11 @@ export default function Home() {
         <div className="mx-auto flex h-14 max-w-6xl items-center px-6">
           <Logo />
           <nav className="ml-auto flex items-center gap-6 text-[13px] text-muted-foreground">
-            <a href="#how-it-works" className="transition-colors hover:text-foreground">
-              How it works
-            </a>
             <a href="#projects" className="transition-colors hover:text-foreground">
               Projects
+            </a>
+            <a href="#how-it-works" className="transition-colors hover:text-foreground">
+              How it works
             </a>
           </nav>
         </div>
@@ -48,7 +48,11 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="how-it-works" className="scroll-mt-20 border-y bg-white">
+        <section id="projects" className="mx-auto max-w-6xl scroll-mt-20 px-6 pb-20">
+          <h2 className="mb-6 text-lg font-semibold tracking-tight">Your projects</h2>
+          <ProjectGrid />
+        </section>
+        <section id="how-it-works" className="scroll-mt-20 border-t bg-white">
           <div className="mx-auto max-w-6xl px-6 py-16">
             <h2 className="text-[13px] font-medium text-muted-foreground">How it works</h2>
             <ol className="mt-8 grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
@@ -68,10 +72,6 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="projects" className="mx-auto max-w-6xl scroll-mt-20 px-6 pt-14 pb-24">
-          <h2 className="mb-6 text-lg font-semibold tracking-tight">Your projects</h2>
-          <ProjectGrid />
-        </section>
       </main>
     </div>
   );
