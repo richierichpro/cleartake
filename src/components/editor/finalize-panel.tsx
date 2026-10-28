@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, ChevronRight, Flag, Loader2, MessageSquareQuote, RotateCw, Sparkles, TriangleAlert, Type, X } from "lucide-react";
+import { Check, ChevronRight, Flag, Loader2, MessageSquareQuote, Plus, RotateCw, Sparkles, TriangleAlert, Type, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DIRECTOR_CONFIG, placeDirector, scriptKey, type Placement } from "@/lib/director";
+import { anchorAt, DIRECTOR_CONFIG, newItemId, placeDirector, scriptKey, type Placement } from "@/lib/director";
 import { formatRelative, formatTime } from "@/lib/format";
 import type { SyncPlan } from "@/lib/sync";
 import { cn } from "@/lib/utils";
@@ -56,7 +56,7 @@ export function FinalizePanel({
 
         <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
           <Progress project={project} finalize={finalize} stale={!!stale} />
-          {d && !finalize.running && <Plan d={d} places={places} playback={playback} finalize={finalize} />}
+          {d && !finalize.running && <Plan d={d} places={places} playback={playback} finalize={finalize} anchor={(t) => anchorAt(project, plan, words, t)} />}
         </div>
       </div>
     </motion.aside>
@@ -143,13 +143,32 @@ function Plan({
   places,
   playback,
   finalize,
+  anchor,
 }: {
   d: DirectorPlan;
   places: Record<string, Placement>;
   playback: Playback;
   finalize: Finalize;
+  anchor: (t: number) => { segmentId: string; phrase: string } | null; // the words spoken at a time
 }) {
   const { edit } = finalize;
+  const [added, setAdded] = useState<string | null>(null); // focus the item you just added
+
+  // Adds a step label or callout at the playhead, tied to the words spoken there.
+  function add(kind: "steps" | "callouts") {
+    const at = anchor(playback.currentTime);
+    if (!at) {
+      toast("Move the playhead to where you're speaking", { description: "Items are tied to the words said at that moment." });
+      return;
+    }
+    const id = newItemId(kind === "steps" ? "s" : "c");
+    edit((x) =>
+      kind === "steps"
+        ? { ...x, steps: [...x.steps, { id, ...at, label: "New step" }] }
+        : { ...x, callouts: [...x.callouts, { id, ...at, text: "New callout" }] },
+    );
+    setAdded(id);
+  }
   // Removes the item that hides another one (too close in time), with Undo.
   function showInstead(otherId: string, kind: "steps" | "callouts") {
     const before = d;
@@ -168,7 +187,7 @@ function Plan({
         <Field label="Subtitle" value={d.subtitle} max={m.subtitle} onChange={(subtitle) => edit((x) => ({ ...x, subtitle }))} />
       </Section>
 
-      <Section icon={<Flag />} title="Step labels" hint="A badge where a new task begins" count={d.steps.length}>
+      <Section icon={<Flag />} title="Step labels" hint="A badge where a new task begins" count={d.steps.length} onAdd={() => add("steps")}>
         {byTime(d.steps).map((s) => (
           <ItemRow
             key={s.id}
@@ -180,6 +199,7 @@ function Plan({
             onChange={(label) => edit((x) => ({ ...x, steps: x.steps.map((y) => (y.id === s.id ? { ...y, label } : y)) }))}
             onRemove={() => edit((x) => ({ ...x, steps: x.steps.filter((y) => y.id !== s.id) }))}
             onShowInstead={(other) => showInstead(other, "steps")}
+            autoFocus={s.id === added}
             otherLabel={(other) => d.steps.find((y) => y.id === other)?.label}
           />
         ))}
@@ -188,6 +208,7 @@ function Plan({
       <Section
         icon={<MessageSquareQuote />}
         title="Callouts"
+        onAdd={() => add("callouts")}
         hint={`A short note at the bottom, at most one per ${DIRECTOR_CONFIG.calloutEvery}s`}
         count={d.callouts.length}
       >
@@ -202,6 +223,7 @@ function Plan({
             onChange={(text) => edit((x) => ({ ...x, callouts: x.callouts.map((y) => (y.id === c.id ? { ...y, text } : y)) }))}
             onRemove={() => edit((x) => ({ ...x, callouts: x.callouts.filter((y) => y.id !== c.id) }))}
             onShowInstead={(other) => showInstead(other, "callouts")}
+            autoFocus={c.id === added}
             otherLabel={(other) => d.callouts.find((y) => y.id === other)?.text}
           />
         ))}
@@ -280,12 +302,14 @@ function Section({
   title,
   hint,
   count,
+  onAdd,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   hint: string;
   count?: number;
+  onAdd?: () => void; // shows "+ Add" (at the playhead)
   children: React.ReactNode;
 }) {
   return (
@@ -293,11 +317,20 @@ function Section({
       <div className="mb-2.5 flex items-baseline gap-2">
         <span className="self-center text-muted-foreground [&_svg]:size-3.5">{icon}</span>
         <h3 className="text-[13px] font-medium">{title}</h3>
-        <span className="text-xs text-muted-foreground">{hint}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{hint}</span>
+        {onAdd && (
+          <Button variant="ghost" size="xs" className="-my-1 shrink-0 gap-1 self-center" onClick={onAdd} title="Add at the playhead">
+            <Plus /> Add
+          </Button>
+        )}
       </div>
       <div className="space-y-2">
         {children}
-        {count === 0 && <p className="rounded-lg border border-dashed px-3 py-2.5 text-xs text-muted-foreground">None suggested.</p>}
+        {count === 0 && (
+          <p className="rounded-lg border border-dashed px-3 py-2.5 text-xs text-muted-foreground">
+            None yet.{onAdd && " Move the playhead and click Add."}
+          </p>
+        )}
       </div>
     </section>
   );
@@ -322,6 +355,7 @@ function ItemRow({
   onRemove,
   onShowInstead,
   otherLabel,
+  autoFocus,
 }: {
   place?: Placement;
   playback: Playback;
@@ -332,6 +366,7 @@ function ItemRow({
   onRemove: () => void;
   onShowInstead: (otherId: string) => void; // removes the item this one is hidden by
   otherLabel: (otherId: string) => string | undefined;
+  autoFocus?: boolean; // just added: select its text to type the label
 }) {
   const off = !place || place.time === null || place.hidden;
   const blocker = place?.hiddenBy;
@@ -346,7 +381,14 @@ function ItemRow({
           {place?.time != null ? formatTime(place.time) : "--:--"}
         </button>
         <div className="relative min-w-0 flex-1">
-          <Input value={value} maxLength={max} onChange={(e) => onChange(e.target.value)} className={cn("h-8", place?.hidden && "pr-16")} />
+          <Input
+            value={value}
+            maxLength={max}
+            onChange={(e) => onChange(e.target.value)}
+            autoFocus={autoFocus}
+            onFocus={(e) => autoFocus && e.currentTarget.select()}
+            className={cn("h-8", place?.hidden && "pr-16")}
+          />
           {place?.hidden && (
             <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
               Hidden

@@ -138,3 +138,33 @@ function spaceOut(items: { id: string; place: Placement }[], gap: number, what: 
     } else last = { id, time: place.time };
   }
 }
+
+/**
+ * The paragraph and the words spoken at output time `t`, as an anchor for an item you add by hand.
+ * Uses the next word from `t` (or the last one before it) and enough words to be unique in the paragraph.
+ */
+export function anchorAt(project: Project, plan: SyncPlan, transcript: TranscriptWord[], t: number) {
+  const ai = voiceOf(project).mode === "ai";
+  for (const p of activeParagraphs(project, plan)) {
+    if (t < p.start - 0.05 || t > p.end + 0.05) continue;
+    // The paragraph's words with their output times.
+    const v = plan.voice.find((x) => x.segmentId === p.seg.id);
+    const words = ai
+      ? v && p.seg.voice?.words
+        ? p.seg.voice.words.map((w) => ({ text: w.text, start: v.outputStart + w.start }))
+        : []
+      : transcript.slice(p.seg.wordStart, p.seg.wordEnd).map((w) => ({ text: w.text, start: sourceToOutput(plan, w.start) }));
+    if (!words.length) return null;
+    let i = words.findIndex((w) => w.start >= t - 0.1);
+    if (i < 0) i = words.length - 1;
+    // The shortest phrase from word i that is found at word i (not at an earlier repeat).
+    for (let n = 2; n <= 6; n++) {
+      const phrase = words.slice(i, i + n).map((w) => w.text).join(" ");
+      const found = findPhraseTime(words, phrase);
+      if (found !== null && Math.abs(found - words[i].start) < 0.01) return { segmentId: p.seg.id, phrase };
+      if (i + n >= words.length) break;
+    }
+    return { segmentId: p.seg.id, phrase: words.slice(i, i + 6).map((w) => w.text).join(" ") };
+  }
+  return null;
+}
