@@ -17,9 +17,9 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 12 – Zoom detection (debug only)
 - [x] Step 13 – Zooms tab
 - [x] Step 14 – Captions
-- [ ] Step 15 – Finalize + polish, split in two:
+- [x] Step 15 – Finalize + polish, split in two:
   - [x] 15a – Finalize button + AI director plan, reviewed in a panel
-  - [x] 15b – Render the plan: intro/outro scenes, step badges, callouts, caption emphasis, crossfades (awaiting "works")
+  - [x] 15b – Render the plan: intro/outro scenes, step badges, callouts, caption emphasis, crossfades
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
 
