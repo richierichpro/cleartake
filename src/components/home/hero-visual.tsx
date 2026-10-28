@@ -1,4 +1,4 @@
-import { Mic } from "lucide-react";
+import { ArrowDown, Mic, Sparkles } from "lucide-react";
 import { BACKGROUND_PRESETS } from "@/lib/visuals";
 
 // A still of what Demopolish makes, on a made-up product (not a real project): the recording framed on a
@@ -88,35 +88,62 @@ export function HeroVisual() {
         </div>
       </div>
 
-      {/* The voice: what you said → what the AI voice says */}
+      {/* The voice, before → after: your recording vs. the AI voiceover */}
       <div className="absolute bottom-0 -left-10 w-80 rounded-xl border bg-white p-3.5 shadow-[0_16px_40px_-16px_rgba(17,17,19,0.3)]">
-        <div className="flex items-center gap-2">
-          <span className="flex size-6 items-center justify-center rounded-md bg-brand/10 text-brand">
-            <Mic className="size-3.5" />
-          </span>
-          <p className="text-[13px] font-semibold">Voiceover</p>
-          <p className="ml-auto text-[11px] text-muted-foreground">Rewritten and re-voiced</p>
+        <VoiceRow
+          icon={<Mic className="size-3.5" />}
+          label="Your recording"
+          time="0:36"
+          quote="“so uh… you click on the, the new report thing”"
+          // Uneven, with flat gaps where you paused
+          bars={[4, 9, 3, 2, 2, 2, 7, 12, 5, 2, 2, 2, 2, 6, 10, 4, 2, 2, 8, 5, 3, 2, 2, 2]}
+        />
+        <div className="my-2 ml-3 flex items-center gap-2 text-[10px] text-muted-foreground">
+          <ArrowDown className="size-3" /> rewritten and re-voiced
         </div>
-        <p className="mt-3 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">You said</p>
-        <p className="mt-0.5 text-xs leading-snug text-muted-foreground italic">
-          “so <s>uh</s> basically you just, <s>you click on the,</s> the new report thing”
-        </p>
-        <p className="mt-2.5 text-[10px] font-medium tracking-wide text-brand uppercase">AI voice</p>
-        <div className="mt-1 flex items-center gap-2.5">
-          <span className="flex h-5 items-center gap-[2px]">
-            {[5, 9, 14, 8, 17, 11, 6, 13, 18, 10, 7, 12, 15, 8, 5].map((h, i) => (
-              <span key={i} className="w-[2px] rounded-full bg-brand" style={{ height: h }} />
-            ))}
-          </span>
-          <p className="text-[13px] font-medium">“Then click New report.”</p>
-        </div>
-        <p className="mt-3 border-t pt-2 text-[11px] text-muted-foreground">
-          Video retimed to the new voice ·{" "}
-          <span className="font-mono tabular-nums">
-            <span className="line-through">0:36</span> → <span className="font-medium text-foreground">0:19</span>
-          </span>
-        </p>
+        <VoiceRow
+          icon={<Sparkles className="size-3.5" />}
+          label="AI voiceover"
+          time="0:19"
+          quote="“Then click New report.”"
+          bars={[8, 12, 10, 14, 9, 13, 11, 15, 10, 12, 14, 9, 11, 13]}
+          ai
+        />
       </div>
+    </div>
+  );
+}
+
+function VoiceRow({
+  icon,
+  label,
+  time,
+  quote,
+  bars,
+  ai = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  time: string;
+  quote: string;
+  bars: number[]; // waveform heights, px
+  ai?: boolean;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className={`flex size-6 items-center justify-center rounded-md ${ai ? "bg-brand/10 text-brand" : "bg-muted text-muted-foreground"}`}>
+          {icon}
+        </span>
+        <p className={`text-xs font-semibold ${ai ? "" : "text-muted-foreground"}`}>{label}</p>
+        <span className="flex h-4 flex-1 items-center gap-[2px] px-1">
+          {bars.map((h, i) => (
+            <span key={i} className={`w-[2px] rounded-full ${ai ? "bg-brand" : "bg-[#C4C4CC]"}`} style={{ height: h }} />
+          ))}
+        </span>
+        <span className={`font-mono text-[11px] tabular-nums ${ai ? "font-semibold" : "text-muted-foreground"}`}>{time}</span>
+      </div>
+      <p className={`mt-1 pl-8 text-xs leading-snug ${ai ? "font-medium text-foreground" : "text-muted-foreground italic"}`}>{quote}</p>
     </div>
   );
 }
