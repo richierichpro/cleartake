@@ -8,7 +8,6 @@ import type { DirectorPlan, Project, Segment, TranscriptWord } from "./types";
 
 export const DIRECTOR_CONFIG = {
   calloutEvery: 20, // spec: at most one callout per 20s of video
-  stepGap: 4, // step labels closer than this to the previous one are hidden (each needs time to be read)
   maxEmphasisPerParagraph: 2,
   max: { title: 60, subtitle: 90, outro: 70, label: 32, callout: 40, word: 30 }, // characters
 };
@@ -103,7 +102,7 @@ export function placeDirector(project: Project, plan: SyncPlan, transcript: Tran
         : { time: p.start, ...(s.phrase && { note: "phrase not heard, shown at the paragraph start" }) };
     return { id: s.id, place };
   });
-  spaceOut(steps, DIRECTOR_CONFIG.stepGap, "step label");
+  // Close step labels are queued (or hidden) when the badges are scheduled (lib/overlays.ts).
   for (const e of d.emphasis) {
     const p = paragraphs.get(e.segmentId);
     if (!p) out[e.id] = { time: null, note: "paragraph cut" };

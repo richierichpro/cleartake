@@ -10,7 +10,9 @@ import { outputZooms, ZOOM_LIMITS } from "./zooms";
 export const OVERLAY_CONFIG = {
   intro: 2, // seconds, before the video
   outro: 2, // after it
-  step: 3, // how long a step badge stays
+  step: 3, // how long a step badge stays (shorter when the next one is queued behind it)
+  stepMinRead: 2, // a step badge stays at least this long before the next one replaces it
+  stepMaxLag: 2.5, // a queued badge may show at most this long after its phrase; later than that it's hidden
   callout: 3.5,
   animIn: 0.4,
   animOut: 0.3,
@@ -98,12 +100,33 @@ export function buildOverlays(project: Project, plan: SyncPlan, words: Transcrip
       .filter((x) => places[x.id]?.time != null && !places[x.id].hidden)
       .sort((a, b) => places[a.id].time! - places[b.id].time!);
 
-  // A badge never outlasts the start of the next one (they share a spot).
-  const shownSteps = visible(d.steps);
-  const steps = shownSteps.map((s, i) => {
-    const next = shownSteps[i + 1] ? places[shownSteps[i + 1].id].time! : Infinity;
-    const t = places[s.id].time!;
-    return { id: s.id, label: s.label, index: i + 1, ...schedule(s.id, t, Math.min(c.step, next - t - 0.2)) };
+  // Step badges share a spot, so close ones queue: each stays ≥ stepMinRead, the next slides in as it leaves.
+  // One that would show more than stepMaxLag after its phrase is hidden instead.
+  const steps: StepOverlay[] = [];
+  for (const s of visible(d.steps)) {
+    const spoken = places[s.id].time!;
+    const prev = steps[steps.length - 1];
+    const want = prev ? Math.max(spoken, prev.start + c.stepMinRead) : spoken;
+    let start = want;
+    while (overlaps(busy, [start, start + c.animIn]) && start - want < c.maxDelay) start += 0.1;
+    if (start - spoken > c.stepMaxLag + 1e-6) {
+      placed[s.id] = { time: spoken, hidden: true, hiddenBy: prev.id, note: `too close to “${prev.label}” to show both` };
+      continue;
+    }
+    if (prev) prev.end = Math.min(prev.end, start);
+    steps.push({ id: s.id, label: s.label, index: steps.length + 1, start, end: Math.min(plan.outputDuration, start + c.step) });
+    busy.push([start, start + c.animIn]);
+    const notes = [
+      prev && want > spoken + 0.05 && `queued +${(want - spoken).toFixed(1)}s after “${prev.label}”`,
+      start > want + 0.05 && `moved +${(start - want).toFixed(1)}s so it doesn't animate during another effect`,
+    ].filter(Boolean);
+    placed[s.id] = { time: start, ...(notes.length && { note: notes.join(" · ") }) };
+  }
+  // A short empty moment between two badges looks like a blink: keep the first until the next replaces it.
+  steps.forEach((st, i) => {
+    const next = steps[i + 1];
+    if (next && next.start - st.end < 1.5) st.end = next.start;
+    busy.push([st.end - c.animOut, st.end]);
   });
   const callouts = visible(d.callouts).map((x) => ({ id: x.id, text: x.text, ...schedule(x.id, places[x.id].time!, c.callout) }));
   for (const [id, p] of Object.entries(places)) if (!placed[id]) placed[id] = p;
