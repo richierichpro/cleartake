@@ -1,5 +1,6 @@
 import type { Alignment } from "./elevenlabs";
 import type { SyncPlan } from "./sync";
+import { norm, tokens } from "./text-match";
 import type { Project, VoiceWord } from "./types";
 
 // Step 14: captions from the AI voice's word timings (ElevenLabs character timestamps).
@@ -47,9 +48,10 @@ export function buildCaptions(project: Project, plan: SyncPlan): CaptionLine[] {
   const c = CAPTION_CONFIG;
   const lines: CaptionLine[] = [];
   for (const v of plan.voice) {
-    const words = (project.segments?.find((s) => s.id === v.segmentId)?.voice?.words ?? [])
+    const words: VoiceWord[] = (project.segments?.find((s) => s.id === v.segmentId)?.voice?.words ?? [])
       .map((w) => ({ text: w.text, start: v.outputStart + w.start, end: v.outputStart + w.end }))
       .filter((w) => w.start < plan.outputDuration);
+    markEmphasis(words, (project.director?.emphasis ?? []).filter((e) => e.segmentId === v.segmentId).map((e) => e.word));
 
     // 1. Phrases: end at a sentence or a pause in the voice.
     const phrases: { words: VoiceWord[]; reason: CaptionBreak }[] = [];
@@ -89,4 +91,14 @@ export function buildCaptions(project: Project, plan: SyncPlan): CaptionLine[] {
     l.end = Math.min(l.end + c.linger, next ? next.start : Infinity, plan.outputDuration);
   });
   return lines.filter((l) => l.end > l.start);
+}
+
+/** Step 15b: the director's emphasized words, marked at their first occurrence in the paragraph. */
+function markEmphasis(words: VoiceWord[], phrases: string[]) {
+  const w = words.map((x) => norm(x.text));
+  for (const phrase of phrases) {
+    const p = tokens(phrase);
+    const i = w.findIndex((_, k) => p.length > 0 && p.every((t, j) => w[k + j] === t));
+    for (let j = 0; i >= 0 && j < p.length; j++) words[i + j].emphasis = true;
+  }
 }

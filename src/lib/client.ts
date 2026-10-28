@@ -96,6 +96,7 @@ export async function updateProject(
     zooms?: { enabled?: boolean; items?: Zoom[] };
     captions?: { enabled: boolean };
     director?: DirectorContent;
+    scenes?: { intro?: boolean; outro?: boolean };
     visuals?: {
       background?: { enabled?: boolean; preset?: string };
       shadow?: Visuals["shadow"];

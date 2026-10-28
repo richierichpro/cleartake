@@ -8,6 +8,7 @@ import type { DirectorPlan, Project, Segment, TranscriptWord } from "./types";
 
 export const DIRECTOR_CONFIG = {
   calloutEvery: 20, // spec: at most one callout per 20s of video
+  stepGap: 4, // step labels closer than this to the previous one are hidden (each needs time to be read)
   maxEmphasisPerParagraph: 2,
   max: { title: 60, subtitle: 90, outro: 70, label: 32, callout: 40, word: 30 }, // characters
 };
@@ -91,11 +92,17 @@ export function placeDirector(project: Project, plan: SyncPlan, transcript: Tran
     return t === null ? null : sourceToOutput(plan, t);
   }
 
-  for (const s of d.steps) {
+  const steps = d.steps.map((s) => {
     const p = paragraphs.get(s.segmentId);
     const t = p && s.phrase ? spokenAt(s.segmentId, s.phrase) : null;
-    out[s.id] = !p ? { time: null, note: "paragraph cut" } : t !== null ? { time: t } : { time: p.start, ...(s.phrase && { note: "phrase not heard, shown at the paragraph start" }) };
-  }
+    const place: Placement = !p
+      ? { time: null, note: "paragraph cut" }
+      : t !== null
+        ? { time: t }
+        : { time: p.start, ...(s.phrase && { note: "phrase not heard, shown at the paragraph start" }) };
+    return { id: s.id, place };
+  });
+  spaceOut(steps, DIRECTOR_CONFIG.stepGap, "step label");
   for (const e of d.emphasis) {
     const p = paragraphs.get(e.segmentId);
     if (!p) out[e.id] = { time: null, note: "paragraph cut" };
@@ -103,23 +110,30 @@ export function placeDirector(project: Project, plan: SyncPlan, transcript: Tran
   }
 
   // Callouts: when the phrase is spoken (paragraph start if not heard), then at most one per 20s.
-  const callouts = d.callouts
-    .map((c) => {
-      const p = paragraphs.get(c.segmentId);
-      if (!p) return { c, place: { time: null, note: "paragraph cut" } as Placement };
-      const t = spokenAt(c.segmentId, c.phrase);
-      return { c, place: (t === null ? { time: p.start, note: "phrase not heard, shown at the paragraph start" } : { time: t }) as Placement };
-    })
-    .sort((a, b) => (a.place.time ?? Infinity) - (b.place.time ?? Infinity));
-  let last = -Infinity;
-  for (const { c, place } of callouts) {
-    if (place.time !== null) {
-      if (place.time - last < DIRECTOR_CONFIG.calloutEvery) {
-        place.hidden = true;
-        place.note = `within ${DIRECTOR_CONFIG.calloutEvery}s of another callout`;
-      } else last = place.time;
-    }
-    out[c.id] = place;
-  }
+  const callouts = d.callouts.map((c) => {
+    const p = paragraphs.get(c.segmentId);
+    const t = p ? spokenAt(c.segmentId, c.phrase) : null;
+    const place: Placement = !p
+      ? { time: null, note: "paragraph cut" }
+      : t === null
+        ? { time: p.start, note: "phrase not heard, shown at the paragraph start" }
+        : { time: t };
+    return { id: c.id, place };
+  });
+  spaceOut(callouts, DIRECTOR_CONFIG.calloutEvery, "callout");
+
+  for (const x of [...steps, ...callouts]) out[x.id] = x.place;
   return out;
+}
+
+/** In time order, hides items closer than `gap` seconds to the previous shown one. */
+function spaceOut(items: { place: Placement }[], gap: number, what: string) {
+  let last = -Infinity;
+  for (const { place } of [...items].sort((a, b) => (a.place.time ?? Infinity) - (b.place.time ?? Infinity))) {
+    if (place.time === null) continue;
+    if (place.time - last < gap) {
+      place.hidden = true;
+      place.note = [place.note, `within ${gap}s of another ${what}`].filter(Boolean).join(" · ");
+    } else last = place.time;
+  }
 }

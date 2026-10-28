@@ -43,6 +43,7 @@ export interface Project {
   zooms?: { enabled: boolean; items: Zoom[] }; // Step 13; "Add zoom effects" toggles all without deleting
   captions?: { enabled: boolean }; // Step 14; off when missing
   director?: DirectorPlan; // Step 15: the AI edit plan, reviewed and edited by the user
+  scenes?: { intro: boolean; outro: boolean }; // Step 15b, Visuals > Scenes; both on when missing
 }
 
 // Step 15: what the AI "director" suggests. Items point at a paragraph (and a phrase in it),
@@ -125,6 +126,7 @@ export interface VoiceWord {
   text: string; // with its punctuation ("Telegram.")
   start: number;
   end: number;
+  emphasis?: boolean; // Step 15b: highlighted in captions (director plan)
 }
 
 // A paragraph of the script. Segments tile the whole video in source time:

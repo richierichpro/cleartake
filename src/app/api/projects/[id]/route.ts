@@ -26,7 +26,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]">
 }
 
 // Editable project settings: title, voice, edit (cuts / trim / splits, Step 9), visuals (Step 10), zooms (Step 13),
-// captions (Step 14), director plan edits (Step 15).
+// captions (Step 14), director plan edits and scenes (Step 15).
 export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]">) {
   const { id } = await ctx.params;
   if (!(await readProject(id))) return Response.json({ error: "Project not found" }, { status: 404 });
@@ -39,6 +39,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     zooms?: { enabled?: unknown; items?: unknown };
     captions?: { enabled?: unknown };
     director?: unknown;
+    scenes?: { intro?: unknown; outro?: unknown };
   };
   const project = await mutateProject(id, (p) => {
     if (typeof body.title === "string" && body.title.trim()) p.title = body.title.trim().slice(0, 120);
@@ -48,6 +49,12 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     if (typeof body.captions?.enabled === "boolean") p.captions = { enabled: body.captions.enabled };
     // The user's edits to the AI plan replace its content; when and how it was made stays.
     if (body.director && p.director) p.director = { ...p.director, ...cleanPlan(body.director) };
+    if (body.scenes) {
+      const cur = { intro: p.scenes?.intro ?? true, outro: p.scenes?.outro ?? true };
+      if (typeof body.scenes.intro === "boolean") cur.intro = body.scenes.intro;
+      if (typeof body.scenes.outro === "boolean") cur.outro = body.scenes.outro;
+      p.scenes = cur;
+    }
     if (body.voice) {
       const { mode, voiceId, voiceName } = body.voice;
       p.voice = {
