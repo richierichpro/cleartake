@@ -41,6 +41,7 @@ export interface Project {
   splits?: number[]; // split points made with S; they define clickable pieces on the timeline
   visuals?: Visuals; // Step 10; DEFAULT_VISUALS when missing
   zooms?: { enabled: boolean; items: Zoom[] }; // Step 13; "Add zoom effects" toggles all without deleting
+  captions?: { enabled: boolean }; // Step 14; off when missing
 }
 
 // Times in source (recording) seconds, so zooms stay on the right moment when the edit retimes.
@@ -101,6 +102,13 @@ export interface VoiceClip {
   voiceId: string;
   model: string;
   duration: number; // seconds
+  words?: VoiceWord[]; // Step 14: word timings from the ElevenLabs alignment, clip seconds
+}
+
+export interface VoiceWord {
+  text: string; // with its punctuation ("Telegram.")
+  start: number;
+  end: number;
 }
 
 // A paragraph of the script. Segments tile the whole video in source time:

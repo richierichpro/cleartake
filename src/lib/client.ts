@@ -93,6 +93,7 @@ export async function updateProject(
     voice?: Partial<Pick<VoiceSettings, "mode" | "voiceId" | "voiceName">>;
     edit?: { cuts?: Project["cuts"]; trim?: Project["trim"] | null; splits?: number[] };
     zooms?: { enabled?: boolean; items?: Zoom[] };
+    captions?: { enabled: boolean };
     visuals?: {
       background?: { enabled?: boolean; preset?: string };
       shadow?: Visuals["shadow"];
