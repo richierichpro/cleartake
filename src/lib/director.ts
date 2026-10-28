@@ -10,6 +10,7 @@ export const DIRECTOR_CONFIG = {
   calloutEvery: 20, // spec: at most one callout per 20s of video
   maxEmphasisPerParagraph: 2,
   max: { title: 60, subtitle: 90, outro: 70, label: 32, callout: 40, word: 30 }, // characters
+  duration: { min: 1.5, max: 8, step: 0.5 }, // seconds a badge or callout stays, when set by hand
 };
 
 export type DirectorContent = Pick<DirectorPlan, "title" | "subtitle" | "outro" | "steps" | "callouts" | "emphasis">;
@@ -47,15 +48,18 @@ export function cleanPlan(raw: unknown): DirectorContent {
   const m = DIRECTOR_CONFIG.max;
   const list = (v: unknown) => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
   const id = (v: unknown, prefix: string) => (typeof v === "string" && v ? v : newItemId(prefix));
+  const { min, max } = DIRECTOR_CONFIG.duration;
+  const duration = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? { duration: Math.round(Math.max(min, Math.min(max, v)) * 10) / 10 } : {};
   return {
     title: str(r.title, m.title),
     subtitle: str(r.subtitle, m.subtitle),
     outro: str(r.outro, m.outro),
     steps: list(r.steps)
-      .map((s) => ({ id: id(s.id, "s"), segmentId: str(s.segmentId, 40), phrase: str(s.phrase, 120), label: str(s.label, m.label) }))
+      .map((s) => ({ id: id(s.id, "s"), segmentId: str(s.segmentId, 40), phrase: str(s.phrase, 120), label: str(s.label, m.label), ...duration(s.duration) }))
       .filter((s) => s.segmentId && s.label),
     callouts: list(r.callouts)
-      .map((c) => ({ id: id(c.id, "c"), segmentId: str(c.segmentId, 40), phrase: str(c.phrase, 120), text: str(c.text, m.callout) }))
+      .map((c) => ({ id: id(c.id, "c"), segmentId: str(c.segmentId, 40), phrase: str(c.phrase, 120), text: str(c.text, m.callout), ...duration(c.duration) }))
       .filter((c) => c.segmentId && c.text),
     emphasis: list(r.emphasis)
       .map((e) => ({ id: id(e.id, "e"), segmentId: str(e.segmentId, 40), word: str(e.word, m.word) }))

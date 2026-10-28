@@ -52,8 +52,9 @@ export interface DirectorPlan {
   title: string;
   subtitle: string;
   outro: string;
-  steps: { id: string; segmentId: string; phrase: string; label: string }[]; // shown when `phrase` (where a new task begins) is spoken
-  callouts: { id: string; segmentId: string; phrase: string; text: string }[]; // shown when `phrase` is spoken
+  // duration: seconds on screen, set by the user; missing = automatic from the text length (Step 15b)
+  steps: { id: string; segmentId: string; phrase: string; label: string; duration?: number }[]; // shown when `phrase` (where a new task begins) is spoken
+  callouts: { id: string; segmentId: string; phrase: string; text: string; duration?: number }[]; // shown when `phrase` is spoken
   emphasis: { id: string; segmentId: string; word: string }[]; // highlighted in captions
   dropped: { kind: "step" | "callout" | "emphasis"; text: string; reason: string }[]; // AI items that failed validation (debug)
   scriptKey: string; // the script it was made from, to flag when the script changed since

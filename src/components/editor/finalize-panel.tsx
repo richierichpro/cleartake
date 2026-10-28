@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, ChevronRight, Flag, Loader2, MessageSquareQuote, Plus, RotateCw, Sparkles, TriangleAlert, Type, X } from "lucide-react";
+import { Check, ChevronRight, Flag, Loader2, MessageSquareQuote, Minus, Plus, RotateCw, Sparkles, TriangleAlert, Type, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { anchorAt, DIRECTOR_CONFIG, newItemId, placeDirector, scriptKey, type Placement } from "@/lib/director";
+import { itemDuration } from "@/lib/overlays";
 import { formatRelative, formatTime } from "@/lib/format";
 import type { SyncPlan } from "@/lib/sync";
 import { cn } from "@/lib/utils";
@@ -196,6 +197,11 @@ function Plan({
             value={s.label}
             max={m.label}
             detail={s.phrase ? `when you say “${s.phrase}”` : undefined}
+            duration={itemDuration("step", s.label, s.duration)}
+            auto={!s.duration}
+            onDuration={(duration) =>
+              edit((x) => ({ ...x, steps: x.steps.map((y) => (y.id === s.id ? { ...y, duration: duration ?? undefined } : y)) }))
+            }
             onChange={(label) => edit((x) => ({ ...x, steps: x.steps.map((y) => (y.id === s.id ? { ...y, label } : y)) }))}
             onRemove={() => edit((x) => ({ ...x, steps: x.steps.filter((y) => y.id !== s.id) }))}
             onShowInstead={(other) => showInstead(other, "steps")}
@@ -220,6 +226,11 @@ function Plan({
             value={c.text}
             max={m.callout}
             detail={c.phrase ? `when you say “${c.phrase}”` : undefined}
+            duration={itemDuration("callout", c.text, c.duration)}
+            auto={!c.duration}
+            onDuration={(duration) =>
+              edit((x) => ({ ...x, callouts: x.callouts.map((y) => (y.id === c.id ? { ...y, duration: duration ?? undefined } : y)) }))
+            }
             onChange={(text) => edit((x) => ({ ...x, callouts: x.callouts.map((y) => (y.id === c.id ? { ...y, text } : y)) }))}
             onRemove={() => edit((x) => ({ ...x, callouts: x.callouts.filter((y) => y.id !== c.id) }))}
             onShowInstead={(other) => showInstead(other, "callouts")}
@@ -356,6 +367,9 @@ function ItemRow({
   onShowInstead,
   otherLabel,
   autoFocus,
+  duration,
+  auto,
+  onDuration,
 }: {
   place?: Placement;
   playback: Playback;
@@ -367,6 +381,9 @@ function ItemRow({
   onShowInstead: (otherId: string) => void; // removes the item this one is hidden by
   otherLabel: (otherId: string) => string | undefined;
   autoFocus?: boolean; // just added: select its text to type the label
+  duration: number; // seconds on screen
+  auto: boolean; // from the text length (not set by hand)
+  onDuration: (seconds: number | null) => void; // null = back to automatic
 }) {
   const off = !place || place.time === null || place.hidden;
   const blocker = place?.hiddenBy;
@@ -395,6 +412,7 @@ function ItemRow({
             </span>
           )}
         </div>
+        <DurationControl value={duration} auto={auto} onChange={onDuration} />
         <button
           onClick={onRemove}
           aria-label="Remove"
@@ -418,6 +436,31 @@ function ItemRow({
           Show this one instead{otherLabel(blocker) ? ` (removes “${otherLabel(blocker)}”)` : ""}
         </button>
       )}
+    </div>
+  );
+}
+
+// Seconds on screen: − / + in 0.5s steps. "auto" until changed; clicking the value goes back to automatic.
+function DurationControl({ value, auto, onChange }: { value: number; auto: boolean; onChange: (s: number | null) => void }) {
+  const { min, max, step } = DIRECTOR_CONFIG.duration;
+  const set = (v: number) => onChange(Math.max(min, Math.min(max, Math.round(v / step) * step)));
+  const btn = "flex h-full w-6 items-center justify-center text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30 [&_svg]:size-3";
+  return (
+    <div className="flex h-8 shrink-0 items-center rounded-lg border">
+      <button className={btn} onClick={() => set(value - step)} disabled={value <= min} aria-label="Shorter">
+        <Minus />
+      </button>
+      <button
+        onClick={() => !auto && onChange(null)}
+        title={auto ? "Automatic: long enough to read the text. Use − / + to change it." : "Set by you. Click to go back to automatic."}
+        className={cn("flex w-9 flex-col items-center leading-none tabular-nums", !auto && "cursor-pointer hover:text-brand")}
+      >
+        <span className="text-xs">{value.toFixed(1)}s</span>
+        <span className={cn("mt-0.5 text-[9px] text-muted-foreground", !auto && "text-brand")}>{auto ? "auto" : "reset"}</span>
+      </button>
+      <button className={btn} onClick={() => set(value + step)} disabled={value >= max} aria-label="Longer">
+        <Plus />
+      </button>
     </div>
   );
 }

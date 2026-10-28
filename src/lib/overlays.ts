@@ -10,10 +10,13 @@ import { outputZooms, ZOOM_LIMITS } from "./zooms";
 export const OVERLAY_CONFIG = {
   intro: 2, // seconds, before the video
   outro: 2, // after it
-  step: 3, // how long a step badge stays (shorter when the next one is queued behind it)
+  step: 3, // how long a step badge stays at least, automatically (shorter when the next one is queued behind it)
   stepMinRead: 2, // a step badge stays at least this long before the next one replaces it
   stepMaxLag: 2.5, // a queued badge may show at most this long after its phrase; later than that it's hidden
-  callout: 3.5,
+  callout: 3.5, // at least, automatically
+  readingRate: 2.5, // words per second: longer texts stay longer automatically
+  notice: 1.5, // seconds to notice something appeared, before reading it
+  autoMax: 6,
   animIn: 0.4,
   animOut: 0.3,
   crossfade: 0.2, // at cuts
@@ -41,6 +44,15 @@ export interface Overlays {
   callouts: CalloutOverlay[];
   crossfades: number[]; // indexes of plan pieces that fade in over the previous one
   placed: Record<string, Placement>; // final time + why it moved (shown in the Finalize panel)
+}
+
+/** How long a badge or callout stays: the user's duration, or enough time to read its text. */
+export function itemDuration(kind: "step" | "callout", text: string, duration?: number) {
+  if (duration) return duration;
+  const c = OVERLAY_CONFIG;
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const read = Math.round((c.notice + words / c.readingRate) * 2) / 2; // to 0.5s
+  return Math.min(c.autoMax, Math.max(kind === "step" ? c.step : c.callout, read));
 }
 
 export const scenesOf = (p: Project) => ({ intro: p.scenes?.intro ?? true, outro: p.scenes?.outro ?? true });
@@ -113,8 +125,13 @@ export function buildOverlays(project: Project, plan: SyncPlan, words: Transcrip
       placed[s.id] = { time: spoken, hidden: true, hiddenBy: prev.id, note: `too close to “${prev.label}” to show both` };
       continue;
     }
-    if (prev) prev.end = Math.min(prev.end, start);
-    steps.push({ id: s.id, label: s.label, index: steps.length + 1, start, end: Math.min(plan.outputDuration, start + c.step) });
+    if (prev && start < prev.end) {
+      prev.end = start;
+      const p = placed[prev.id];
+      placed[prev.id] = { ...p, note: [p.note, `ends after ${(start - prev.start).toFixed(1)}s when “${s.label}” replaces it`].filter(Boolean).join(" · ") };
+    }
+    const length = itemDuration("step", s.label, s.duration);
+    steps.push({ id: s.id, label: s.label, index: steps.length + 1, start, end: Math.min(plan.outputDuration, start + length) });
     busy.push([start, start + c.animIn]);
     const notes = [
       prev && want > spoken + 0.05 && `queued +${(want - spoken).toFixed(1)}s after “${prev.label}”`,
@@ -125,10 +142,19 @@ export function buildOverlays(project: Project, plan: SyncPlan, words: Transcrip
   // A short empty moment between two badges looks like a blink: keep the first until the next replaces it.
   steps.forEach((st, i) => {
     const next = steps[i + 1];
-    if (next && next.start - st.end < 1.5) st.end = next.start;
+    const setByHand = d.steps.find((x) => x.id === st.id)?.duration;
+    if (next && !setByHand && next.start - st.end > 0.05 && next.start - st.end < 1.5) {
+      st.end = next.start;
+      const p = placed[st.id];
+      placed[st.id] = { ...p, note: [p.note, `stays ${(st.end - st.start).toFixed(1)}s, until “${next.label}” replaces it`].filter(Boolean).join(" · ") };
+    }
     busy.push([st.end - c.animOut, st.end]);
   });
-  const callouts = visible(d.callouts).map((x) => ({ id: x.id, text: x.text, ...schedule(x.id, places[x.id].time!, c.callout) }));
+  const callouts = visible(d.callouts).map((x) => ({
+    id: x.id,
+    text: x.text,
+    ...schedule(x.id, places[x.id].time!, itemDuration("callout", x.text, x.duration)),
+  }));
   for (const [id, p] of Object.entries(places)) if (!placed[id]) placed[id] = p;
   // A note from placing the phrase (e.g. "phrase not heard") stays visible.
   for (const [id, p] of Object.entries(places)) if (p.note && placed[id] !== p) placed[id] = { ...placed[id], note: [p.note, placed[id].note].filter(Boolean).join(" · ") };
