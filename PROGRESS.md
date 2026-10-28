@@ -16,7 +16,7 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [–] Step 11 – Music tab: skipped by decision (not important for the hackathon). Voice loudness normalization skipped with it; revisit only if mixing original + AI voice or adding music.
 - [x] Step 12 – Zoom detection (debug only)
 - [x] Step 13 – Zooms tab
-- [x] Step 14 – Captions (awaiting "works")
+- [x] Step 14 – Captions
 - [ ] Step 15 – Finalize + polish
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
