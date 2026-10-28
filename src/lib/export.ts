@@ -6,6 +6,7 @@ import { buildSyncPlan, identityPlan, type Motion } from "./sync";
 import { voiceOf } from "./voice-settings";
 import { frameProps } from "./visuals";
 import { outputZooms } from "./zooms";
+import { buildCaptions, captionsOn } from "./captions";
 import { compositionSize, DEFAULT_QUALITY, FPS, type ExportQuality } from "@/remotion/constants";
 import type { RenderProps } from "@/remotion/root";
 import type { Transcript } from "./types";
@@ -35,6 +36,7 @@ export async function startExport(id: string, origin: string, quality: ExportQua
     muteOriginal: voiceOf(project).mode === "ai",
     frame,
     zooms: outputZooms(project, plan),
+    captions: captionsOn(project) ? buildCaptions(project, plan) : [],
     ...size,
     durationInFrames: Math.max(1, Math.round(plan.outputDuration * FPS)),
   };

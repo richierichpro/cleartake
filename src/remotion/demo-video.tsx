@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { AbsoluteFill, Freeze, Img, Sequence, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { Audio, Video } from "@remotion/media";
+import type { CaptionLine } from "@/lib/captions";
 import { pieceLength, type TimelinePiece } from "@/lib/sync";
 import { recordingBox, SHADOWS, type FrameProps } from "@/lib/visuals";
 import { ZOOM_LIMITS, zoomWindow, type OutputZoom } from "@/lib/zooms";
@@ -19,11 +20,12 @@ export type DemoVideoProps = {
   muteOriginal: boolean; // true in AI voice mode
   frame: FrameProps; // background, padding, corners, shadow (Step 10)
   zooms: OutputZoom[]; // output seconds (Step 13)
+  captions: CaptionLine[]; // output seconds, empty when captions are off (Step 14)
 };
 
 const frames = (seconds: number) => Math.round(seconds * FPS);
 
-export function DemoVideo({ videoSrc, pieces, voice, muteOriginal, frame, zooms }: DemoVideoProps) {
+export function DemoVideo({ videoSrc, pieces, voice, muteOriginal, frame, zooms, captions }: DemoVideoProps) {
   const { width, height } = useVideoConfig();
   const scale = height / 1080; // sizes are defined at 1080p
 
@@ -54,6 +56,7 @@ export function DemoVideo({ videoSrc, pieces, voice, muteOriginal, frame, zooms 
           </div>
         </div>
       </div>
+      <Captions lines={captions} />
       {voice.map((v) => (
         <Sequence key={`${v.src}@${v.outputStart}`} from={frames(v.outputStart)} durationInFrames={frames(v.duration) + 1} layout="none">
           <Audio src={v.src} />
@@ -77,6 +80,49 @@ function useZoomTransform(zooms: OutputZoom[]) {
   const scale = 1 + (z.scale - 1) * p;
   const win = zoomWindow(z.x, z.y, scale);
   return `scale(${scale}) translate(${-win.left * 100}%, ${-win.top * 100}%)`;
+}
+
+const CAPTION_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const CAPTION_HIGHLIGHT = "#FF5C35";
+
+// Captions sit above the zoom (they never zoom with the video). The word being spoken is highlighted.
+function Captions({ lines }: { lines: CaptionLine[] }) {
+  const frame = useCurrentFrame();
+  const { fps, width, height } = useVideoConfig();
+  const t = frame / fps;
+  const line = lines.find((l) => t >= l.start && t < l.end);
+  if (!line) return null;
+  const s = height / 1080;
+  const appear = spring({ frame: frame - Math.round(line.start * fps), fps, config: { damping: 200 }, durationInFrames: 6 });
+  const current = line.words.findLastIndex((w) => w.start <= t);
+  return (
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 64 * s, display: "flex", justifyContent: "center" }}>
+      <div
+        style={{
+          maxWidth: width * 0.8,
+          padding: `${12 * s}px ${26 * s}px`,
+          borderRadius: 16 * s,
+          background: "rgba(17,17,19,0.82)",
+          color: "#fff",
+          fontFamily: CAPTION_FONT,
+          fontSize: 44 * s,
+          fontWeight: 600,
+          lineHeight: 1.3,
+          letterSpacing: "-0.01em",
+          textAlign: "center",
+          opacity: appear,
+          transform: `translateY(${(1 - appear) * 10 * s}px)`,
+        }}
+      >
+        {line.words.map((w, i) => (
+          <Fragment key={i}>
+            {i > 0 && " "}
+            <span style={{ color: i === current ? CAPTION_HIGHLIGHT : undefined }}>{w.text}</span>
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // The edited recording: plan pieces with their speed, plus held frames.
