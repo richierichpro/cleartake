@@ -13,11 +13,13 @@ export default function Home() {
 
       <main className="mx-auto max-w-6xl px-6 pt-14 pb-24">
         <div className="mx-auto max-w-3xl">
-          <h1 className="text-center text-3xl font-semibold tracking-tight">
-            Turn a raw recording into a polished demo
+          <h1 className="text-center text-4xl leading-tight font-semibold tracking-tight">
+            Turn a raw recording into
+            <br />
+            <span className="text-brand">a professional demo video in minutes</span>
           </h1>
-          <p className="mt-2.5 text-center text-[15px] text-muted-foreground">
-            We transcribe your voiceover, rewrite the script, and retime the video so it looks professionally made.
+          <p className="mx-auto mt-3 max-w-xl text-center text-[15px] text-muted-foreground">
+            We rewrite your script, give it a clear AI voice, cut the dead air, and add zooms, captions and title cards.
           </p>
           <div className="mt-9">
             <UploadZone />
