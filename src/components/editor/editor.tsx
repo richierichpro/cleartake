@@ -31,6 +31,7 @@ import { useZoomDetection } from "./use-zoom-detection";
 import { FinalizePanel } from "./finalize-panel";
 import { outdatedVoices, useFinalize } from "./use-finalize";
 import { scriptKey } from "@/lib/director";
+import { buildOverlays, sceneLengths } from "@/lib/overlays";
 
 export function Editor({ id }: { id: string }) {
   const [project, setProject] = useState<Project | null | "missing">(null);
@@ -59,7 +60,10 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
   const sync = useSyncPlan(project);
   // Until screen activity is analyzed, play the recording as-is.
   const plan = useMemo(() => sync.plan ?? identityPlan(project), [sync.plan, project]);
-  const playback = usePlayback(plan.outputDuration);
+  // Step 15b: what the reviewed director plan adds to the video (intro/outro, badges, callouts, crossfades).
+  const overlays = useMemo(() => buildOverlays(project, plan, sync.words), [project, plan, sync.words]);
+  const scenes = sceneLengths(overlays);
+  const playback = usePlayback(plan.outputDuration, scenes.lead, scenes.tail);
   const edits = useEdits(project, plan, onChange, playback.currentTime);
   const [tab, setTab] = useState<TabId>("script");
   // Selecting a zoom opens its controls and moves the playhead into it, so you aim on the right frame.
@@ -150,7 +154,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
         finalizeOpen={drawer === "finalize"}
         finalizing={finalize.running}
         onFinalize={() => (drawer === "finalize" ? setDrawer(null) : openFinalize())}
-        duration={plan.outputDuration}
+        duration={scenes.lead + plan.outputDuration + scenes.tail}
       />
       <div className="flex min-h-0 flex-1">
         <LeftPanel
@@ -158,7 +162,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
           onTab={setTab}
           content={{
             script: <ScriptView project={project} plan={plan} playback={playback} onChange={onChange} />,
-            visuals: <VisualsTab project={project} onChange={onChange} />,
+            visuals: <VisualsTab project={project} onChange={onChange} finalize={finalize} onFinalize={openFinalize} />,
             zooms: <ZoomsTab zooms={zooms} />,
             voice: (
               <VoiceTab project={project} onChange={onChange} volume={playback.muted ? 0 : playback.volume} />
@@ -175,6 +179,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
               debugBoxes={debugBoxes}
               zooms={playingZooms}
               captions={captionsEnabled && !captionsHint ? captionLines : []}
+              overlays={overlays}
               aim={aiming && zooms.selected ? { zoom: zooms.selected, onFocus: (x, y) => zooms.update(zooms.selected!.id, { x, y }) } : null}
             />
             <AnimatePresence>
@@ -197,6 +202,7 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
                   words={sync.words}
                   playback={playback}
                   finalize={finalize}
+                  placed={overlays.placed}
                   onClose={() => setDrawer(null)}
                 />
               )}

@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Clapperboard, ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { Check, Clapperboard, ImagePlus, Loader2, Sparkles, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -10,8 +12,11 @@ import { Switch } from "@/components/ui/switch";
 import { mediaUrl, removeBackground, updateProject, uploadBackground } from "@/lib/client";
 import { cn } from "@/lib/utils";
 import { BACKGROUND_PRESETS, PADDING_MAX, RADIUS_MAX, visualsOf } from "@/lib/visuals";
+import { DIRECTOR_CONFIG } from "@/lib/director";
+import { OVERLAY_CONFIG, scenesOf } from "@/lib/overlays";
 import type { Project, Visuals } from "@/lib/types";
 import type { ProjectUpdate } from "./editor";
+import type { Finalize } from "./use-finalize";
 
 type VisualsPatch = {
   background?: { enabled?: boolean; preset?: string };
@@ -27,7 +32,17 @@ const SHADOW_OPTIONS = [
   { value: "strong", label: "Strong" },
 ];
 
-export function VisualsTab({ project, onChange }: { project: Project; onChange: ProjectUpdate }) {
+export function VisualsTab({
+  project,
+  onChange,
+  finalize,
+  onFinalize,
+}: {
+  project: Project;
+  onChange: ProjectUpdate;
+  finalize: Finalize;
+  onFinalize: () => void;
+}) {
   const [tab, setTab] = useState<"background" | "scenes">("background");
   return (
     <div className="px-5 py-4">
@@ -55,17 +70,109 @@ export function VisualsTab({ project, onChange }: { project: Project; onChange: 
       {tab === "background" ? (
         <BackgroundSettings project={project} onChange={onChange} />
       ) : (
-        <div className="flex flex-col items-center rounded-xl border border-dashed px-6 py-12 text-center">
-          <div className="mb-3 flex size-10 items-center justify-center rounded-xl bg-muted">
-            <Clapperboard className="size-5 text-muted-foreground" />
-          </div>
-          <p className="text-sm font-medium">Intro and outro scenes</p>
-          <p className="mt-1 max-w-60 text-[13px] leading-relaxed text-muted-foreground">
-            Title cards at the start and end of your video. They arrive with the Finalize step.
-          </p>
-        </div>
+        <ScenesSettings project={project} onChange={onChange} finalize={finalize} onFinalize={onFinalize} />
       )}
     </div>
+  );
+}
+
+// Step 15b: intro and outro title cards. Their text comes from the Finalize plan (and is edited in both places).
+function ScenesSettings({
+  project,
+  onChange,
+  finalize,
+  onFinalize,
+}: {
+  project: Project;
+  onChange: ProjectUpdate;
+  finalize: Finalize;
+  onFinalize: () => void;
+}) {
+  const d = project.director;
+  const scenes = scenesOf(project);
+  const m = DIRECTOR_CONFIG.max;
+
+  if (!d) {
+    return (
+      <div className="flex flex-col items-center rounded-xl border border-dashed px-6 py-12 text-center">
+        <div className="mb-3 flex size-10 items-center justify-center rounded-xl bg-muted">
+          <Clapperboard className="size-5 text-muted-foreground" />
+        </div>
+        <p className="text-sm font-medium">Intro and outro scenes</p>
+        <p className="mt-1 max-w-64 text-[13px] leading-relaxed text-muted-foreground">
+          Title cards at the start and end of your video. Click Finalize and the AI writes them from your script.
+        </p>
+        <Button size="sm" className="mt-4 gap-1.5" onClick={onFinalize} disabled={finalize.running}>
+          {finalize.running ? <Loader2 className="animate-spin" /> : <Sparkles />} Finalize
+        </Button>
+      </div>
+    );
+  }
+
+  function toggle(key: "intro" | "outro", on: boolean) {
+    onChange((p) => ({ ...p, scenes: { ...scenesOf(p), [key]: on } }));
+    updateProject(project.id, { scenes: { [key]: on } }).catch(() => toast.error("Couldn't save scenes"));
+  }
+
+  return (
+    <div className="space-y-4">
+      <SceneBox
+        title="Intro card"
+        hint={`${OVERLAY_CONFIG.intro}s title card before the video`}
+        on={scenes.intro}
+        onToggle={(on) => toggle("intro", on)}
+      >
+        <SceneField label="Title" value={d.title} max={m.title} onChange={(title) => finalize.edit((x) => ({ ...x, title }))} />
+        <SceneField label="Subtitle" value={d.subtitle} max={m.subtitle} onChange={(subtitle) => finalize.edit((x) => ({ ...x, subtitle }))} />
+      </SceneBox>
+      <SceneBox
+        title="Outro card"
+        hint={`${OVERLAY_CONFIG.outro}s closing card after the video`}
+        on={scenes.outro}
+        onToggle={(on) => toggle("outro", on)}
+      >
+        <SceneField label="Closing line" value={d.outro} max={m.outro} onChange={(outro) => finalize.edit((x) => ({ ...x, outro }))} />
+      </SceneBox>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Press play at 00:00 to watch the intro. An empty title or closing line skips its card.
+      </p>
+    </div>
+  );
+}
+
+function SceneBox({
+  title,
+  hint,
+  on,
+  onToggle,
+  children,
+}: {
+  title: string;
+  hint: string;
+  on: boolean;
+  onToggle: (on: boolean) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border p-4">
+      <label className="flex cursor-pointer items-start gap-3">
+        <div className="flex-1">
+          <p className="text-sm font-medium">{title}</p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{hint}</p>
+        </div>
+        <Switch checked={on} onCheckedChange={onToggle} className="mt-0.5" />
+      </label>
+      <div className={cn("mt-3 space-y-3 transition-opacity duration-200", !on && "pointer-events-none opacity-40")}>{children}</div>
+    </div>
+  );
+}
+
+function SceneField({ label, value, max, onChange }: { label: string; value: string; max: number; onChange: (v: string) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs text-muted-foreground">{label}</span>
+      <Input value={value} maxLength={max} onChange={(e) => onChange(e.target.value)} />
+    </label>
   );
 }
 

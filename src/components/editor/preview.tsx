@@ -10,6 +10,7 @@ import { isSegmentRemoved } from "@/lib/edits";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
 import { frameProps, recordingBox } from "@/lib/visuals";
 import type { CaptionLine } from "@/lib/captions";
+import { drawnOverlays, sceneLengths, type Overlays } from "@/lib/overlays";
 import type { ZoomCandidate } from "@/lib/zoom-detect";
 import { zoomWindow, type OutputZoom } from "@/lib/zooms";
 import type { Zoom } from "@/lib/types";
@@ -27,6 +28,7 @@ export function Preview({
   debugBoxes = [],
   zooms,
   captions,
+  overlays,
   aim,
 }: {
   project: Project;
@@ -35,6 +37,7 @@ export function Preview({
   debugBoxes?: ZoomCandidate[]; // Step 12: detected change regions to outline (debug only)
   zooms: OutputZoom[]; // Step 13: what the Player plays (output seconds)
   captions: CaptionLine[]; // Step 14: empty when captions are off
+  overlays: Overlays; // Step 15b
   aim?: { zoom: Zoom; onFocus: (x: number, y: number) => void } | null; // a selected zoom: click to set its focus
 }) {
   const { attachPlayer, playing, toggle } = playback;
@@ -44,6 +47,7 @@ export function Preview({
   const frameKey = JSON.stringify(frame); // stable key so the Player only re-renders when the frame changes
   const zoomsKey = JSON.stringify(zooms);
   const captionsKey = JSON.stringify(captions);
+  const overlaysKey = JSON.stringify(drawnOverlays(overlays));
   const comp = compositionSize(project.video.width, project.video.height, "1080p", frame.framed);
   const aspect = comp.width / comp.height;
 
@@ -71,8 +75,10 @@ export function Preview({
       frame: JSON.parse(frameKey),
       zooms: JSON.parse(zoomsKey),
       captions: JSON.parse(captionsKey),
+      overlays: JSON.parse(overlaysKey),
+      duration: plan.outputDuration,
     }),
-    [project.id, project.video.file, plan, v.mode, frameKey, zoomsKey, captionsKey],
+    [project.id, project.video.file, plan, v.mode, frameKey, zoomsKey, captionsKey, overlaysKey],
   );
 
   // Paragraphs that will play silently because their AI voice is missing or outdated.
@@ -80,7 +86,8 @@ export function Preview({
     v.mode === "ai" ? (project.segments ?? []).filter(
           (s) => ["none", "outdated"].includes(clipStatus(s, v)) && !isSegmentRemoved(project, s),
         ).length : 0;
-  const durationInFrames = Math.max(1, Math.round(plan.outputDuration * FPS));
+  const { lead, tail } = sceneLengths(overlays);
+  const durationInFrames = Math.max(1, Math.round((lead + plan.outputDuration + tail) * FPS));
 
   return (
     <div ref={containerRef} className="dot-grid relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">

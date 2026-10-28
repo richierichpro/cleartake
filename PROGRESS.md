@@ -18,8 +18,8 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 13 – Zooms tab
 - [x] Step 14 – Captions
 - [ ] Step 15 – Finalize + polish, split in two:
-  - [x] 15a – Finalize button + AI director plan, reviewed in a panel (awaiting "works")
-  - [ ] 15b – Render the plan: intro/outro scenes, step badges, callouts, caption emphasis, crossfades
+  - [x] 15a – Finalize button + AI director plan, reviewed in a panel
+  - [x] 15b – Render the plan: intro/outro scenes, step badges, callouts, caption emphasis, crossfades (awaiting "works")
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
 
@@ -88,6 +88,12 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
 - Finalize (Step 15a): **Finalize** button in the top bar opens a panel beside the preview (shares the space with Debug, one at a time). Clicking it runs when there's no plan or it's stale (script fingerprint `scriptKey` changed, or a voice clip is missing/outdated): 1) regenerates outdated AI voice clips one by one (existing voice route, progress shown), 2) POST /director (`lib/director-ai.ts`): one LLM call with the active paragraphs (output start/end + narrated text), video length and zooms → title, subtitle, steps `{paragraphId, phrase, label}`, callouts `{paragraphId, phrase, text}` (max one per 20s of video), emphasis `{paragraphId, word}` (≤ 2 per paragraph), outro. Validated: unknown paragraphs, emphasis words not in the text, callouts over the limit → `dropped` (shown under "AI suggestions left out"). Saved as `project.director`.
   - Items point at a paragraph + a spoken phrase, never a time: `placeDirector()` (lib/director.ts, pure) finds when the phrase is spoken (AI voice word timings, or the transcript in original mode) and falls back to the paragraph start; callouts closer than 20s are hidden with a note. Steps are anchored to a phrase too, because paragraphs are long and can contain several tasks.
   - Review panel: every item is editable (saved debounced via PATCH `director`, through `cleanPlan`) or removable; clicking a time seeks there. "Re-run" asks the AI again. Phrase matching (`findPhraseTime`) moved to `lib/text-match.ts` (shared with zoom suggestions). `lib/sync-server.ts` `loadSyncPlan()` builds the editor's plan on the server (export + director).
+- Rendering the plan (Step 15b): `lib/overlays.ts` `buildOverlays(project, plan, words)` (pure; editor + export) → composition `overlays` prop. OVERLAY_CONFIG: intro 2s, outro 2s, step badge 3s, callout 3.5s, in 0.4s / out 0.3s, crossfade 0.2s.
+  - **Restraint rule** (nothing animates during another animation): zoom ease-in/out windows are "busy"; crossfades at cuts (a piece whose source doesn't continue the previous one) are skipped when they'd overlap one; badges then callouts are scheduled at the earliest start (≤ 1.5s later) whose in/out animations hit no busy window. Step labels closer than 4s (`stepGap`) and callouts closer than 20s are hidden (placeDirector); a badge ends before the next one starts. The Finalize panel shows the final times and why something moved or is hidden.
+  - Composition: `<Sequence>` intro → video → outro. The intro card crossfades into a frozen first frame of the video; the last frame fades out under the outro card (frozen `<Main still>` copies, no sound), so the video itself never fades (pausing at 00:00 shows the video). White title card on the background (dark #111113 canvas when the background is off). Step badge top-left (orange number + label), callout = lower third bottom-left above the captions. Crossfade: the incoming piece fades in over the previous one, which plays 0.2s longer underneath.
+  - Captions: the current word now gets an orange background (padding with equal negative margin, so words don't shift); emphasized words are orange text (first occurrence in the paragraph, `markEmphasis`).
+  - Playback: `usePlayback(duration, lead, tail)`; the Player is longer by the intro/outro, the playhead stays in video time (rests at 00:00 during the intro, at the end during the outro). Paused, it rests on the video's first frame; play at 00:00 (or after the end) starts with the intro.
+  - Visuals → Scenes: intro/outro switches (`project.scenes`, both on by default) + the title, subtitle and closing line (same fields as the Finalize panel). An empty title or closing line skips its card. Export length includes the cards.
 - Toasts are top-right under the top bar so they never cover the timeline.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
@@ -166,6 +172,7 @@ src/
     director-ai.ts                   runDirector: LLM edit plan + validation → project.director
     sync-server.ts                   loadSyncPlan(project): the editor's plan on the server
     text-match.ts                    (shared) norm, tokens, findPhraseTime
+    overlays.ts                      (shared) OVERLAY_CONFIG, buildOverlays (scheduling + restraint), sceneLengths, scenesOf, drawnOverlays
     zoom-detect.ts                   (pure) ZOOM_DETECT_CONFIG, detectZoomCandidates (pixel-change regions; backup signal)
     zoom-suggest.ts                  suggestZooms: LLM mentions → transcript time → OCR box; typing backup; 3s spacing
     ocr.ts                           ocrFrames(video, times): builds .cache/ocr from scripts/ocr.swift, returns text boxes
@@ -247,6 +254,8 @@ Also on project.json: `"voice": { "mode": "ai" | "original", "voiceId", "voiceNa
 `"captions": { "enabled": true }` (Step 14; off when missing).
 
 `"director": { "title", "subtitle", "outro", "steps": [{ "id", "segmentId", "phrase", "label" }], "callouts": [{ "id", "segmentId", "phrase", "text" }], "emphasis": [{ "id", "segmentId", "word" }], "dropped": [{ "kind", "text", "reason" }], "scriptKey", "model", "at" }` (Step 15a; times are derived from the phrases).
+
+`"scenes": { "intro": true, "outro": true }` (Step 15b; both on when missing).
 
 `"export": { "status": "rendering" | "done" | "error", "quality": "1080p" | "1440p" | "original", "width", "height", "stage", "progress": 0–1, "startedAt", "finishedAt", "file", "size", "duration", "error" }` (Step 8).
 

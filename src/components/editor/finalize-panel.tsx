@@ -20,6 +20,7 @@ export function FinalizePanel({
   words,
   playback,
   finalize,
+  placed,
   onClose,
 }: {
   project: Project;
@@ -27,10 +28,12 @@ export function FinalizePanel({
   words: TranscriptWord[]; // transcript, for timing in original-voice mode
   playback: Playback;
   finalize: Finalize;
+  placed: Record<string, Placement>; // final times after scheduling (Step 15b), with why items moved
   onClose: () => void;
 }) {
   const d = project.director;
-  const places = useMemo(() => (d ? placeDirector(project, plan, words, d) : {}), [project, plan, words, d]);
+  // Phrase times, then the scheduled times of badges and callouts (they may move to avoid another animation).
+  const places = useMemo(() => ({ ...(d ? placeDirector(project, plan, words, d) : {}), ...placed }), [project, plan, words, d, placed]);
   const stale = d && (d.scriptKey !== scriptKey(project) || outdatedVoices(project).length > 0);
 
   return (
@@ -255,7 +258,6 @@ function Plan({
             </ul>
           </details>
         )}
-        <p className="mt-3 leading-relaxed">These appear in the preview and the export once rendering is added.</p>
       </div>
     </div>
   );
