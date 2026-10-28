@@ -28,6 +28,9 @@ import { useEdits } from "./use-edits";
 import { useZooms } from "./use-zooms";
 import { ZoomsTab } from "./zooms-tab";
 import { useZoomDetection } from "./use-zoom-detection";
+import { FinalizePanel } from "./finalize-panel";
+import { outdatedVoices, useFinalize } from "./use-finalize";
+import { scriptKey } from "@/lib/director";
 
 export function Editor({ id }: { id: string }) {
   const [project, setProject] = useState<Project | null | "missing">(null);
@@ -91,7 +94,17 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
   }, [project, onChange]);
 
   const [zoomIndex, setZoomIndex] = useState(0);
-  const [debugOpen, setDebugOpen] = useState(false);
+  // The right-hand drawer beside the preview: Debug or Finalize (one at a time).
+  const [drawer, setDrawer] = useState<"debug" | "finalize" | null>(null);
+  const debugOpen = drawer === "debug";
+  const finalize = useFinalize(project, onChange);
+  // Finalize opens the review panel, and runs when there's no plan yet or it's out of date.
+  const openFinalize = () => {
+    setDrawer("finalize");
+    const d = project.director;
+    const stale = !d || d.scriptKey !== scriptKey(project) || outdatedVoices(project).length > 0;
+    if (stale && !finalize.running) finalize.run();
+  };
   const zoomDetection = useZoomDetection(project.id, debugOpen);
   // Debug: outline detected change regions while they happen (and briefly after).
   const sourceNow = outputToSource(plan, playback.currentTime);
@@ -133,7 +146,10 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
-      <TopBar project={project} onChange={onChange} debugOpen={debugOpen} onToggleDebug={() => setDebugOpen((o) => !o)}
+      <TopBar project={project} onChange={onChange} debugOpen={debugOpen} onToggleDebug={() => setDrawer((o) => (o === "debug" ? null : "debug"))}
+        finalizeOpen={drawer === "finalize"}
+        finalizing={finalize.running}
+        onFinalize={() => (drawer === "finalize" ? setDrawer(null) : openFinalize())}
         duration={plan.outputDuration}
       />
       <div className="flex min-h-0 flex-1">
@@ -171,7 +187,17 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
                   zoomDetection={zoomDetection}
                   captions={captionLines}
                   onChange={onChange}
-                  onClose={() => setDebugOpen(false)}
+                  onClose={() => setDrawer(null)}
+                />
+              )}
+              {drawer === "finalize" && (
+                <FinalizePanel
+                  project={project}
+                  plan={plan}
+                  words={sync.words}
+                  playback={playback}
+                  finalize={finalize}
+                  onClose={() => setDrawer(null)}
                 />
               )}
             </AnimatePresence>

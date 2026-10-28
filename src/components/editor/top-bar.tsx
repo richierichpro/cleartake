@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bug, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Bug, Check, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -17,10 +17,13 @@ interface Props {
   onChange: (p: Project) => void;
   debugOpen: boolean;
   onToggleDebug: () => void;
+  finalizeOpen: boolean;
+  finalizing: boolean;
+  onFinalize: () => void;
   duration: number; // edited video length
 }
 
-export function TopBar({ project, onChange, debugOpen, onToggleDebug, duration }: Props) {
+export function TopBar({ project, onChange, debugOpen, onToggleDebug, finalizeOpen, finalizing, onFinalize, duration }: Props) {
   const [title, setTitle] = useState(project.title);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
@@ -91,6 +94,15 @@ export function TopBar({ project, onChange, debugOpen, onToggleDebug, duration }
           </TooltipTrigger>
           <TooltipContent side="bottom">Debug</TooltipContent>
         </Tooltip>
+        <Button
+          variant="outline"
+          onClick={onFinalize}
+          aria-pressed={finalizeOpen}
+          className={cn("gap-1.5", finalizeOpen && "border-brand/40 bg-brand/5 text-brand hover:bg-brand/10 hover:text-brand")}
+        >
+          {finalizing ? <Loader2 className="animate-spin" /> : <Sparkles className="text-brand" />}
+          Finalize
+        </Button>
         <ExportButton project={project} duration={duration} />
       </div>
     </header>

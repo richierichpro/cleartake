@@ -17,7 +17,9 @@ Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
 - [x] Step 12 – Zoom detection (debug only)
 - [x] Step 13 – Zooms tab
 - [x] Step 14 – Captions
-- [ ] Step 15 – Finalize + polish
+- [ ] Step 15 – Finalize + polish, split in two:
+  - [x] 15a – Finalize button + AI director plan, reviewed in a panel (awaiting "works")
+  - [ ] 15b – Render the plan: intro/outro scenes, step badges, callouts, caption emphasis, crossfades
 - Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
 
@@ -83,6 +85,9 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
   - Editor (`use-zooms.ts`): add at a time (refused within 3s of another), drag move/resize on the zoom track (clamped by the gap rule), Delete removes the selected zoom (otherwise Delete cuts), Esc deselects. Auto-detect turns the Step 12 suggestions into zooms on click only, each at least 3s of *output* (sped-up paragraphs compress source time). Selecting a zoom opens the Zooms tab and seeks into it; while paused inside the selected zoom, the Player leaves that zoom out and shows a dashed window + focus dot (clicking the video sets the focus); pressing play always plays every zoom, no need to deselect.
   - The left panel's tab is now controlled by the editor (`tab` / `onTab`).
 - Captions (Step 14): `project.captions = { enabled }` (off by default), toggled by the captions button in the control bar. Built from the **AI voice only**: each clip stores `words` (from the ElevenLabs character timestamps, `alignmentToWords`); clips voiced earlier are backfilled from their cached `voice-{hash}.json` on GET /api/projects/[id] (no ElevenLabs call). `lib/captions.ts` `buildCaptions(project, plan)` (pure, shared by the editor and export): each clip's words shifted by its `outputStart`; a caption ends at a sentence end, a pause ≥ 0.4s or the paragraph end; longer ones (> 36 chars / 7 words) are split evenly; each stays 0.4s after its last word but never overlaps the next. Composition `<Captions>`: dark rounded pill at the bottom of the canvas (above the zoom, so it never zooms), 44px@1080p system font, the word being spoken in #FF5C35, a short fade/slide in. The button is inactive with a reason in original-voice mode or when no voice is generated. Debug: "Captions" lists every caption, its length and why it ended (click seeks).
+- Finalize (Step 15a): **Finalize** button in the top bar opens a panel beside the preview (shares the space with Debug, one at a time). Clicking it runs when there's no plan or it's stale (script fingerprint `scriptKey` changed, or a voice clip is missing/outdated): 1) regenerates outdated AI voice clips one by one (existing voice route, progress shown), 2) POST /director (`lib/director-ai.ts`): one LLM call with the active paragraphs (output start/end + narrated text), video length and zooms → title, subtitle, steps `{paragraphId, phrase, label}`, callouts `{paragraphId, phrase, text}` (max one per 20s of video), emphasis `{paragraphId, word}` (≤ 2 per paragraph), outro. Validated: unknown paragraphs, emphasis words not in the text, callouts over the limit → `dropped` (shown under "AI suggestions left out"). Saved as `project.director`.
+  - Items point at a paragraph + a spoken phrase, never a time: `placeDirector()` (lib/director.ts, pure) finds when the phrase is spoken (AI voice word timings, or the transcript in original mode) and falls back to the paragraph start; callouts closer than 20s are hidden with a note. Steps are anchored to a phrase too, because paragraphs are long and can contain several tasks.
+  - Review panel: every item is editable (saved debounced via PATCH `director`, through `cleanPlan`) or removable; clicking a time seeks there. "Re-run" asks the AI again. Phrase matching (`findPhraseTime`) moved to `lib/text-match.ts` (shared with zoom suggestions). `lib/sync-server.ts` `loadSyncPlan()` builds the editor's plan on the server (export + director).
 - Toasts are top-right under the top bar so they never cover the timeline.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.
@@ -128,7 +133,9 @@ src/
     editor/use-sync-plan.ts          loads motion + transcript, auto-analyzes old projects, memoizes buildSyncPlan
     editor/editor.tsx                loads project, layout, Space shortcut, skeleton, not-found
     editor/use-playback.ts           Remotion Player-backed playback (output time): currentTime, seek, toggle, playRange, volume/mute, attachPlayer
-    editor/top-bar.tsx               back, editable title (saves on blur/Enter, Esc reverts), Debug, Export
+    editor/top-bar.tsx               back, editable title (saves on blur/Enter, Esc reverts), Debug, Finalize, Export
+    editor/finalize-panel.tsx        Step 15 review panel: progress, intro/steps/callouts/emphasis/outro, edit/remove, dropped items
+    editor/use-finalize.ts           run (outdated voices → director), debounced plan edits
     editor/export-button.tsx         Export button (shows % while rendering) + popover: idle / rendering (stage + bar) / ready (Download, Export again) / error; silent-paragraph warning; toast when done
     editor/left-panel.tsx            collapsible panel, 5 tabs with animated underline, empty states
     editor/preview.tsx               dot-grid canvas, aspect-fit framed Remotion <Player> of DemoVideo, play overlay, "N paragraphs will play silently" pill, codec error fallback
@@ -155,6 +162,10 @@ src/
     visuals.ts                       (shared) presets, SHADOWS, DEFAULT_VISUALS, visualsOf, frameProps
     zooms.ts                         (shared) ZOOM_LIMITS, outputZooms, zoomWindow, zoomFromSuggestion, fitsBetween
     captions.ts                      (shared) CAPTION_CONFIG, alignmentToWords, buildCaptions, captionsOn
+    director.ts                      (shared) DIRECTOR_CONFIG, activeParagraphs, scriptKey, cleanPlan, placeDirector
+    director-ai.ts                   runDirector: LLM edit plan + validation → project.director
+    sync-server.ts                   loadSyncPlan(project): the editor's plan on the server
+    text-match.ts                    (shared) norm, tokens, findPhraseTime
     zoom-detect.ts                   (pure) ZOOM_DETECT_CONFIG, detectZoomCandidates (pixel-change regions; backup signal)
     zoom-suggest.ts                  suggestZooms: LLM mentions → transcript time → OCR box; typing backup; 3s spacing
     ocr.ts                           ocrFrames(video, times): builds .cache/ocr from scripts/ocr.swift, returns text boxes
@@ -234,6 +245,8 @@ Also on project.json: `"voice": { "mode": "ai" | "original", "voiceId", "voiceNa
 `"zooms": { "enabled": true, "items": [{ "id", "start", "end" (source s), "x", "y" (0–1), "scale" (1.2–2.5), "enabled" }] }` (Step 13).
 
 `"captions": { "enabled": true }` (Step 14; off when missing).
+
+`"director": { "title", "subtitle", "outro", "steps": [{ "id", "segmentId", "phrase", "label" }], "callouts": [{ "id", "segmentId", "phrase", "text" }], "emphasis": [{ "id", "segmentId", "word" }], "dropped": [{ "kind", "text", "reason" }], "scriptKey", "model", "at" }` (Step 15a; times are derived from the phrases).
 
 `"export": { "status": "rendering" | "done" | "error", "quality": "1080p" | "1440p" | "original", "width", "height", "stage", "progress": 0–1, "startedAt", "finishedAt", "file", "size", "duration", "error" }` (Step 8).
 

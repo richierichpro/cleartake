@@ -39,5 +39,5 @@ export function useSyncPlan(project: Project) {
     () => (inputs?.motion ? buildSyncPlan(project, inputs.words, inputs.motion) : null),
     [project, inputs],
   );
-  return { plan, analyzing, analyze };
+  return { plan, analyzing, analyze, words: inputs?.words ?? [] }; // words: the transcript (original-voice timings)
 }
