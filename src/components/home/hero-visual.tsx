@@ -9,12 +9,12 @@ const AURORA = BACKGROUND_PRESETS.find((b) => b.id === "aurora")!.css;
 
 export function HeroVisual() {
   return (
-    <div className="relative pt-8 pb-44">
+    <div className="relative pt-8 pb-[104px]">
       {/* Labels outside the frame */}
       <Label className="top-0 left-[4%]" line="down">
         Step labels
       </Label>
-      <Label className="bottom-[110px] left-[56%]" line="up" length={40}>
+      <Label className="bottom-[38px] left-[56%]" line="up" length={40}>
         Captions follow the AI voice
       </Label>
 
@@ -89,7 +89,7 @@ export function HeroVisual() {
       </div>
 
       {/* The voice, before → after: your recording vs. the AI voiceover */}
-      <div className="absolute bottom-0 -left-10 w-80 rounded-xl border bg-white p-3.5 shadow-[0_16px_40px_-16px_rgba(17,17,19,0.3)]">
+      <div className="absolute bottom-0 -left-14 w-[17rem] rounded-xl border bg-white p-3.5 shadow-[0_16px_40px_-16px_rgba(17,17,19,0.3)]">
         <VoiceRow
           icon={<Mic className="size-3.5" />}
           label="Your recording"
@@ -135,8 +135,8 @@ function VoiceRow({
         <span className={`flex size-6 items-center justify-center rounded-md ${ai ? "bg-brand/10 text-brand" : "bg-muted text-muted-foreground"}`}>
           {icon}
         </span>
-        <p className={`text-xs font-semibold ${ai ? "" : "text-muted-foreground"}`}>{label}</p>
-        <span className="flex h-4 flex-1 items-center gap-[2px] px-1">
+        <p className={`text-xs font-semibold whitespace-nowrap ${ai ? "" : "text-muted-foreground"}`}>{label}</p>
+        <span className="flex h-4 min-w-0 flex-1 items-center gap-[2px] overflow-hidden px-1">
           {bars.map((h, i) => (
             <span key={i} className={`w-[2px] rounded-full ${ai ? "bg-brand" : "bg-[#C4C4CC]"}`} style={{ height: h }} />
           ))}
