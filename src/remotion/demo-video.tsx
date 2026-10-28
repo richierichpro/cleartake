@@ -1,7 +1,8 @@
 import { Fragment } from "react";
-import { AbsoluteFill, Freeze, Img, Sequence, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Freeze, Img, interpolate, Sequence, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { Audio, Video } from "@remotion/media";
 import type { CaptionLine } from "@/lib/captions";
+import { OVERLAY_CONFIG, type CalloutOverlay, type Overlays, type StepOverlay } from "@/lib/overlays";
 import { pieceLength, type TimelinePiece } from "@/lib/sync";
 import { recordingBox, SHADOWS, type FrameProps } from "@/lib/visuals";
 import { ZOOM_LIMITS, zoomWindow, type OutputZoom } from "@/lib/zooms";
@@ -21,27 +22,88 @@ export type DemoVideoProps = {
   frame: FrameProps; // background, padding, corners, shadow (Step 10)
   zooms: OutputZoom[]; // output seconds (Step 13)
   captions: CaptionLine[]; // output seconds, empty when captions are off (Step 14)
+  overlays: Omit<Overlays, "placed">; // intro/outro, step badges, callouts, crossfades (Step 15b)
+  duration: number; // output seconds of the edited video (without intro/outro)
 };
 
 const frames = (seconds: number) => Math.round(seconds * FPS);
 
-export function DemoVideo({ videoSrc, pieces, voice, muteOriginal, frame, zooms, captions }: DemoVideoProps) {
-  const { width, height } = useVideoConfig();
-  const scale = height / 1080; // sizes are defined at 1080p
+const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const ACCENT = "#FF5C35";
+const INK = "#111113";
+const FADE = 8; // frames for scene fades
 
-  const box = recordingBox(frame, width, height);
-  const zoomTransform = useZoomTransform(zooms);
-  const radius = frame.framed ? frame.radius * scale : 0;
-  const shadow = frame.framed ? SHADOWS[frame.shadow] : null;
-
+export function DemoVideo(props: DemoVideoProps) {
+  const { frame, overlays, duration } = props;
+  const lead = overlays.intro ? frames(OVERLAY_CONFIG.intro) : 0;
+  const main = Math.max(1, frames(duration));
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000" }}>
+    <AbsoluteFill style={{ backgroundColor: frame.framed ? "#000" : INK }}>
       {frame.framed &&
         (frame.image ? (
           <Img src={frame.image} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : (
           <AbsoluteFill style={{ background: frame.background }} />
         ))}
+      {overlays.intro && (
+        <>
+          <Sequence durationInFrames={lead} name="Intro">
+            <SceneCard big={overlays.intro.title} small={overlays.intro.subtitle} fadeOutAt={lead} />
+          </Sequence>
+          {/* The intro card crossfades into the video's first frame. */}
+          <Sequence from={lead - FADE} durationInFrames={FADE} name="Intro → video">
+            <Fade frames={FADE} from={0} to={1}>
+              <Freeze frame={0}>
+                <Main {...props} still />
+              </Freeze>
+            </Fade>
+          </Sequence>
+        </>
+      )}
+      <Sequence from={lead} durationInFrames={main} name="Video">
+        <Main {...props} />
+      </Sequence>
+      {overlays.outro && (
+        <>
+          {/* The video's last frame fades out under the outro card. */}
+          <Sequence from={lead + main} durationInFrames={FADE} name="Video → outro">
+            <Fade frames={FADE} from={1} to={0}>
+              <Freeze frame={main - 1}>
+                <Main {...props} still />
+              </Freeze>
+            </Fade>
+          </Sequence>
+          <Sequence from={lead + main} name="Outro">
+            <SceneCard big={overlays.outro.line} small={overlays.outro.title} />
+          </Sequence>
+        </>
+      )}
+    </AbsoluteFill>
+  );
+}
+
+// The edited video: the framed recording (zoomed), captions, badges and callouts, and the voice.
+// `still`: a frozen frame for the scene transitions (no sound).
+function Main({
+  videoSrc,
+  pieces,
+  voice,
+  muteOriginal,
+  frame,
+  zooms,
+  captions,
+  overlays,
+  still = false,
+}: DemoVideoProps & { still?: boolean }) {
+  const { width, height } = useVideoConfig();
+  const scale = height / 1080; // sizes are defined at 1080p
+  const box = recordingBox(frame, width, height);
+  const zoomTransform = useZoomTransform(zooms);
+  const radius = frame.framed ? frame.radius * scale : 0;
+  const shadow = frame.framed ? SHADOWS[frame.shadow] : null;
+
+  return (
+    <AbsoluteFill>
       <div
         style={{
           position: "absolute",
@@ -52,12 +114,19 @@ export function DemoVideo({ videoSrc, pieces, voice, muteOriginal, frame, zooms,
       >
         <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: radius, background: "#000" }}>
           <div style={{ position: "absolute", inset: 0, transformOrigin: "0 0", transform: zoomTransform }}>
-            <Recording pieces={pieces} videoSrc={videoSrc} muteOriginal={muteOriginal} />
+            <Recording pieces={pieces} videoSrc={videoSrc} muteOriginal={muteOriginal || still} crossfades={overlays.crossfades} />
           </div>
         </div>
       </div>
       <Captions lines={captions} />
-      {voice.map((v) => (
+      {overlays.steps.map((s) => (
+        <StepBadge key={s.id} step={s} />
+      ))}
+      {overlays.callouts.map((c) => (
+        <Callout key={c.id} callout={c} left={box.left} raised={captions.length > 0} />
+      ))}
+      {!still &&
+        voice.map((v) => (
         <Sequence key={`${v.src}@${v.outputStart}`} from={frames(v.outputStart)} durationInFrames={frames(v.duration) + 1} layout="none">
           <Audio src={v.src} />
         </Sequence>
@@ -82,10 +151,19 @@ function useZoomTransform(zooms: OutputZoom[]) {
   return `scale(${scale}) translate(${-win.left * 100}%, ${-win.top * 100}%)`;
 }
 
-const CAPTION_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
-const CAPTION_HIGHLIGHT = "#FF5C35";
+/** 0 → 1 → 0 over an overlay's life: spring in at the start, fade out at the end. */
+function useInOut(start: number, end: number) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = frame / fps;
+  if (t < start || t >= end) return 0;
+  const enter = spring({ frame: frame - Math.round(start * fps), fps, config: { damping: 200 }, durationInFrames: frames(OVERLAY_CONFIG.animIn) });
+  const exit = interpolate(t, [end - OVERLAY_CONFIG.animOut, end], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  return Math.min(enter, exit);
+}
 
-// Captions sit above the zoom (they never zoom with the video). The word being spoken is highlighted.
+// Captions sit above the zoom (they never zoom with the video). The word being spoken gets an orange
+// background; words the director emphasized are orange.
 function Captions({ lines }: { lines: CaptionLine[] }) {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -104,7 +182,7 @@ function Captions({ lines }: { lines: CaptionLine[] }) {
           borderRadius: 16 * s,
           background: "rgba(17,17,19,0.82)",
           color: "#fff",
-          fontFamily: CAPTION_FONT,
+          fontFamily: FONT,
           fontSize: 44 * s,
           fontWeight: 600,
           lineHeight: 1.3,
@@ -117,7 +195,18 @@ function Captions({ lines }: { lines: CaptionLine[] }) {
         {line.words.map((w, i) => (
           <Fragment key={i}>
             {i > 0 && " "}
-            <span style={{ color: i === current ? CAPTION_HIGHLIGHT : undefined }}>{w.text}</span>
+            <span
+              style={
+                i === current
+                  ? // Padding with equal negative margin: the highlight never shifts the words.
+                    { background: ACCENT, color: "#fff", borderRadius: 8 * s, padding: `0 ${6 * s}px`, margin: `0 ${-6 * s}px` }
+                  : w.emphasis
+                    ? { color: ACCENT }
+                    : undefined
+              }
+            >
+              {w.text}
+            </span>
           </Fragment>
         ))}
       </div>
@@ -125,40 +214,161 @@ function Captions({ lines }: { lines: CaptionLine[] }) {
   );
 }
 
-// The edited recording: plan pieces with their speed, plus held frames.
-function Recording({ pieces, videoSrc, muteOriginal }: Pick<DemoVideoProps, "pieces" | "videoSrc" | "muteOriginal">) {
+// Step badge: top left, slides in where a new task begins.
+function StepBadge({ step }: { step: StepOverlay }) {
+  const { height } = useVideoConfig();
+  const p = useInOut(step.start, step.end);
+  if (!p) return null;
+  const s = height / 1080;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: 40 * s,
+        top: 40 * s,
+        display: "flex",
+        alignItems: "center",
+        gap: 14 * s,
+        padding: `${10 * s}px ${22 * s}px ${10 * s}px ${10 * s}px`,
+        borderRadius: 999,
+        background: "rgba(255,255,255,0.96)",
+        boxShadow: `0 ${8 * s}px ${28 * s}px rgba(17,17,19,0.18)`,
+        fontFamily: FONT,
+        opacity: p,
+        transform: `translateX(${(1 - p) * -24 * s}px)`,
+      }}
+    >
+      <span
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 40 * s,
+          height: 40 * s,
+          borderRadius: 999,
+          background: ACCENT,
+          color: "#fff",
+          fontSize: 22 * s,
+          fontWeight: 700,
+        }}
+      >
+        {step.index}
+      </span>
+      <span style={{ color: INK, fontSize: 28 * s, fontWeight: 600, letterSpacing: "-0.01em" }}>{step.label}</span>
+    </div>
+  );
+}
+
+// Callout: a lower third at the bottom left, above the captions.
+function Callout({ callout, left, raised }: { callout: CalloutOverlay; left: number; raised: boolean }) {
+  const { height } = useVideoConfig();
+  const p = useInOut(callout.start, callout.end);
+  if (!p) return null;
+  const s = height / 1080;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: Math.max(40 * s, left + 32 * s),
+        bottom: (raised ? 170 : 64) * s,
+        display: "flex",
+        alignItems: "stretch",
+        gap: 16 * s,
+        padding: `${16 * s}px ${26 * s}px ${16 * s}px ${16 * s}px`,
+        borderRadius: 16 * s,
+        background: "rgba(255,255,255,0.97)",
+        boxShadow: `0 ${10 * s}px ${32 * s}px rgba(17,17,19,0.2)`,
+        fontFamily: FONT,
+        opacity: p,
+        transform: `translateY(${(1 - p) * 16 * s}px)`,
+      }}
+    >
+      <span style={{ width: 6 * s, borderRadius: 3 * s, background: ACCENT }} />
+      <span style={{ color: INK, fontSize: 32 * s, fontWeight: 600, letterSpacing: "-0.01em" }}>{callout.text}</span>
+    </div>
+  );
+}
+
+// Intro / outro: a white title card on the background.
+function SceneCard({ big, small, fadeOutAt }: { big: string; small: string; fadeOutAt?: number }) {
+  const frame = useCurrentFrame();
+  const { fps, height } = useVideoConfig();
+  const s = height / 1080;
+  const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 14 });
+  const sub = spring({ frame: frame - 5, fps, config: { damping: 200 }, durationInFrames: 14 });
+  const exit = fadeOutAt ? interpolate(frame, [fadeOutAt - FADE, fadeOutAt], [1, 0], { extrapolateLeft: "clamp" }) : 1;
+  return (
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", opacity: exit }}>
+      <div
+        style={{
+          maxWidth: "70%",
+          padding: `${56 * s}px ${80 * s}px`,
+          borderRadius: 32 * s,
+          background: "rgba(255,255,255,0.97)",
+          boxShadow: `0 ${24 * s}px ${70 * s}px rgba(17,17,19,0.25)`,
+          textAlign: "center",
+          fontFamily: FONT,
+          opacity: enter,
+          transform: `translateY(${(1 - enter) * 20 * s}px) scale(${0.97 + 0.03 * enter})`,
+        }}
+      >
+        <div style={{ width: 56 * s, height: 6 * s, borderRadius: 3 * s, background: ACCENT, margin: `0 auto ${28 * s}px` }} />
+        <div style={{ color: INK, fontSize: 68 * s, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-0.025em" }}>{big}</div>
+        {small && (
+          <div style={{ color: "#6B6B76", fontSize: 30 * s, marginTop: 18 * s, lineHeight: 1.35, opacity: sub }}>{small}</div>
+        )}
+      </div>
+    </AbsoluteFill>
+  );
+}
+
+// The edited recording: plan pieces with their speed, plus held frames. At a cut the next piece
+// fades in over the previous one, which keeps playing a moment longer underneath.
+function Recording({
+  pieces,
+  videoSrc,
+  muteOriginal,
+  crossfades,
+}: Pick<DemoVideoProps, "pieces" | "videoSrc" | "muteOriginal"> & { crossfades: number[] }) {
+  const xf = frames(OVERLAY_CONFIG.crossfade);
   return (
     <>
       {pieces.map((p, i) => {
         const from = frames(p.outputStart);
         const movingEnd = frames(p.outputStart + (p.sourceEnd - p.sourceStart) / p.speed);
         const end = frames(p.outputStart + pieceLength(p));
+        const fadeIn = crossfades.includes(i) ? xf : 0;
+        const overlap = crossfades.includes(i + 1) ? xf : 0; // the last part of this piece plays under the next one
         return (
           <Fragment key={i}>
             {movingEnd > from && (
-              <Sequence from={from} durationInFrames={movingEnd - from} premountFor={FPS}>
-                <Video
-                  src={videoSrc}
-                  trimBefore={frames(p.sourceStart)}
-                  playbackRate={p.speed}
-                  // Fast-forwarded silences would only chirp; mute them.
-                  muted={muteOriginal || p.speed > 2}
-                  style={{ width: "100%", height: "100%" }}
-                  objectFit="contain"
-                />
-              </Sequence>
-            )}
-            {end > movingEnd && (
-              <Sequence from={movingEnd} durationInFrames={end - movingEnd} premountFor={FPS}>
-                <Freeze frame={0}>
+              <Sequence from={from} durationInFrames={movingEnd - from + (end > movingEnd ? 0 : overlap)} premountFor={FPS}>
+                <FadeIn frames={fadeIn}>
                   <Video
                     src={videoSrc}
-                    trimBefore={Math.max(0, frames(p.sourceEnd) - 1)}
-                    muted
+                    trimBefore={frames(p.sourceStart)}
+                    playbackRate={p.speed}
+                    // Fast-forwarded silences would only chirp; mute them.
+                    muted={muteOriginal || p.speed > 2}
                     style={{ width: "100%", height: "100%" }}
                     objectFit="contain"
                   />
-                </Freeze>
+                </FadeIn>
+              </Sequence>
+            )}
+            {end > movingEnd && (
+              <Sequence from={movingEnd} durationInFrames={end - movingEnd + overlap} premountFor={FPS}>
+                <FadeIn frames={movingEnd > from ? 0 : fadeIn}>
+                  <Freeze frame={0}>
+                    <Video
+                      src={videoSrc}
+                      trimBefore={Math.max(0, frames(p.sourceEnd) - 1)}
+                      muted
+                      style={{ width: "100%", height: "100%" }}
+                      objectFit="contain"
+                    />
+                  </Freeze>
+                </FadeIn>
               </Sequence>
             )}
           </Fragment>
@@ -166,4 +376,15 @@ function Recording({ pieces, videoSrc, muteOriginal }: Pick<DemoVideoProps, "pie
       })}
     </>
   );
+}
+
+function Fade({ frames: n, from, to, children }: { frames: number; from: number; to: number; children: React.ReactNode }) {
+  const frame = useCurrentFrame();
+  return <AbsoluteFill style={{ opacity: interpolate(frame, [0, n], [from, to], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) }}>{children}</AbsoluteFill>;
+}
+
+function FadeIn({ frames: n, children }: { frames: number; children: React.ReactNode }) {
+  const frame = useCurrentFrame();
+  const opacity = n ? interpolate(frame, [0, n], [0, 1], { extrapolateRight: "clamp" }) : 1;
+  return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
 }

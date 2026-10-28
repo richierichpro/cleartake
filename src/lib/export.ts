@@ -7,6 +7,7 @@ import { voiceOf } from "./voice-settings";
 import { frameProps } from "./visuals";
 import { outputZooms } from "./zooms";
 import { buildCaptions, captionsOn } from "./captions";
+import { buildOverlays, drawnOverlays, sceneLengths } from "./overlays";
 import { compositionSize, DEFAULT_QUALITY, FPS, type ExportQuality } from "@/remotion/constants";
 import type { RenderProps } from "@/remotion/root";
 
@@ -21,7 +22,9 @@ export async function startExport(id: string, origin: string, quality: ExportQua
   const project = await readProject(id);
   if (!project) throw new Error("Project not found");
 
-  const { plan } = await loadSyncPlan(project);
+  const { plan, words } = await loadSyncPlan(project);
+  const overlays = drawnOverlays(buildOverlays(project, plan, words));
+  const { lead, tail } = sceneLengths(overlays);
   const media = (file: string) => `${origin}/api/projects/${id}/media/${file}`;
   const frame = frameProps(project, media);
   const size = compositionSize(project.video.width, project.video.height, quality, frame.framed);
@@ -33,8 +36,10 @@ export async function startExport(id: string, origin: string, quality: ExportQua
     frame,
     zooms: outputZooms(project, plan),
     captions: captionsOn(project) ? buildCaptions(project, plan) : [],
+    overlays,
+    duration: plan.outputDuration,
     ...size,
-    durationInFrames: Math.max(1, Math.round(plan.outputDuration * FPS)),
+    durationInFrames: Math.max(1, Math.round((lead + plan.outputDuration + tail) * FPS)),
   };
   await writeJson(id, "export-props.json", props);
 

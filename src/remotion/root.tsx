@@ -29,6 +29,8 @@ export function RemotionRoot() {
         frame: { framed: false, background: "#000", image: null, shadow: "none", radius: 0, padding: 0, recordingAspect: 16 / 9 },
         zooms: [],
         captions: [],
+        overlays: { intro: null, outro: null, steps: [], callouts: [], crossfades: [] },
+        duration: 1 / 30,
         width: 1920,
         height: 1080,
         durationInFrames: 1,
