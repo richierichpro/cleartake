@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { FileVideo, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { readVideoInfo, uploadThumbnail, uploadVideo } from "@/lib/client";
 import { cn } from "@/lib/utils";
 
@@ -42,8 +43,7 @@ export function UploadZone() {
   }
 
   return (
-    <motion.div
-      onClick={() => !busy && inputRef.current?.click()}
+    <div
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);
@@ -54,13 +54,9 @@ export function UploadZone() {
         setDragging(false);
         handleFile(e.dataTransfer.files[0]);
       }}
-      whileHover={busy ? undefined : "hover"}
-      animate={dragging ? "hover" : "rest"}
-      initial="rest"
       className={cn(
-        "group relative flex h-72 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-white transition-colors duration-200",
-        dragging ? "border-brand bg-brand/[0.03]" : "border-[#D4D4DA] hover:border-[#B4B4BC]",
-        busy && "cursor-default",
+        "rounded-2xl border bg-white p-2 shadow-[0_1px_2px_rgba(17,17,19,0.04),0_8px_24px_-12px_rgba(17,17,19,0.12)] transition-colors duration-200",
+        dragging && "border-brand ring-4 ring-brand/10",
       )}
     >
       <input
@@ -73,59 +69,60 @@ export function UploadZone() {
           e.target.value = "";
         }}
       />
-      <div className="dot-grid pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-60" />
-
-      <AnimatePresence mode="wait">
-        {phase.kind === "idle" ? (
-          <motion.div
-            key="idle"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.2 }}
-            className="relative flex flex-col items-center text-center"
-          >
-            <motion.div
-              variants={{ rest: { y: 0, scale: 1 }, hover: { y: -4, scale: 1.04 } }}
-              transition={{ type: "spring", stiffness: 400, damping: 22 }}
-              className={cn(
-                "mb-5 flex size-14 items-center justify-center rounded-2xl border bg-white shadow-sm transition-colors",
-                dragging && "border-brand text-brand",
-              )}
-            >
-              <UploadCloud className="size-6" strokeWidth={1.75} />
-            </motion.div>
-            <p className="text-[15px] font-medium">
-              {dragging ? "Drop to upload" : "Drop your screen recording here"}
-            </p>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              or <span className="font-medium text-foreground underline-offset-4 group-hover:underline">browse files</span>
-              {" "}· MP4, MOV or WebM with your voiceover
-            </p>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="busy"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="relative flex w-full max-w-sm flex-col items-center text-center"
-          >
-            <div className="mb-5 flex size-14 items-center justify-center rounded-2xl border bg-white shadow-sm">
-              <FileVideo className="size-6" strokeWidth={1.75} />
-            </div>
-            <p className="max-w-full truncate text-[15px] font-medium">{phase.fileName}</p>
-            <p className="mt-1.5 text-sm text-muted-foreground tabular-nums">{phase.label}</p>
-            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <motion.div
-                className="h-full rounded-full bg-foreground"
-                animate={{ width: `${Math.max(4, phase.progress * 100)}%` }}
-                transition={{ ease: "easeOut", duration: 0.25 }}
-              />
-            </div>
-          </motion.div>
+      <div
+        className={cn(
+          "rounded-xl border border-dashed px-5 py-5 transition-colors duration-200",
+          dragging ? "border-brand/50 bg-brand/[0.03]" : "border-[#E4E4E7]",
         )}
-      </AnimatePresence>
-    </motion.div>
+      >
+        <AnimatePresence mode="wait" initial={false}>
+          {phase.kind === "idle" ? (
+            <motion.div
+              key="idle"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex items-center gap-4"
+            >
+              <div
+                className={cn(
+                  "flex size-11 shrink-0 items-center justify-center rounded-xl border bg-[#FAFAFB] transition-colors",
+                  dragging && "border-brand text-brand",
+                )}
+              >
+                <UploadCloud className="size-5" strokeWidth={1.75} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{dragging ? "Drop to upload" : "Upload a screen recording"}</p>
+                <p className="mt-0.5 text-[13px] text-muted-foreground">or drag it here · MP4, MOV, WebM</p>
+              </div>
+              <Button onClick={() => inputRef.current?.click()} className="shrink-0">
+                Choose file
+              </Button>
+            </motion.div>
+          ) : (
+            <motion.div key="busy" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-4">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-[#FAFAFB]">
+                <FileVideo className="size-5" strokeWidth={1.75} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="truncate text-sm font-medium">{phase.fileName}</p>
+                  <p className="shrink-0 text-xs text-muted-foreground tabular-nums">{phase.label}</p>
+                </div>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <motion.div
+                    className="h-full rounded-full bg-foreground"
+                    animate={{ width: `${Math.max(4, phase.progress * 100)}%` }}
+                    transition={{ ease: "easeOut", duration: 0.25 }}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
   );
 }
