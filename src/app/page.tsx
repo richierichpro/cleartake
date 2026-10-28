@@ -6,7 +6,7 @@ import { UploadZone } from "@/components/home/upload-zone";
 
 const STEPS = [
   { icon: FileVideo, title: "Upload", text: "Drop a screen recording with your voiceover. Any length, MP4, MOV or WebM." },
-  { icon: AudioLines, title: "Rewrite and revoice", text: "Your words are transcribed, rewritten in clear English and read by a natural AI voice." },
+  { icon: AudioLines, title: "Rewrite and re-voice", text: "Your voiceover is transcribed, rewritten in clear English and re-recorded by a natural AI voice." },
   { icon: ScanSearch, title: "Retime", text: "Silences are cut and slow parts sped up, so the video follows the new voice." },
   { icon: Captions, title: "Polish and export", text: "Zooms on what you click, captions, step labels and title cards. Export an MP4." },
 ];
@@ -31,13 +31,13 @@ export default function Home() {
       <main>
         <section className="mx-auto grid max-w-6xl items-center gap-14 px-6 pt-16 pb-28 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
           <div>
-            <p className="text-[13px] font-medium text-brand">AI editor for product demos</p>
+            <p className="text-[13px] font-medium text-brand">AI voiceover and editing for product demos</p>
             <h1 className="mt-3 text-[44px] leading-[1.08] font-semibold tracking-[-0.03em] text-balance">
               Turn a raw recording into a professional demo video
             </h1>
             <p className="mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
-              Record your screen and talk through it. Demopolish rewrites the script, gives it a clear voice, cuts the dead air
-              and adds zooms, captions and title cards, in minutes.
+              Talk through your screen however it comes out, ums, retakes and all. Demopolish rewrites what you said, re-records it in a
+              natural AI voice, retimes the video to match and adds zooms, captions and title cards, in minutes.
             </p>
             <div className="mt-8 max-w-md">
               <UploadZone />
