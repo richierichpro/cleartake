@@ -172,7 +172,7 @@ export function Preview({
                     style={{ left: `${aim.zoom.x * 100}%`, top: `${aim.zoom.y * 100}%` }}
                   />
                   <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs text-white backdrop-blur">
-                    Click to choose where this zoom points · {aim.zoom.scale.toFixed(1)}×
+                    Click to choose where this zoom points · {aim.zoom.scale.toFixed(1)}× · Press play to preview
                   </div>
                 </div>
               );

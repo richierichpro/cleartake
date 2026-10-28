@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { fetchZoomCandidates, updateProject } from "@/lib/client";
 import { outputToSource, sourceToOutput, type SyncPlan } from "@/lib/sync";
-import { fitsBetween, newZoomId, outputZooms, ZOOM_LIMITS, zoomFromSuggestion, zoomsOf } from "@/lib/zooms";
+import { fitsBetween, newZoomId, ZOOM_LIMITS, zoomFromSuggestion, zoomsOf } from "@/lib/zooms";
 import type { Project, Zoom } from "@/lib/types";
 import type { ProjectUpdate } from "./editor";
 
@@ -150,8 +150,6 @@ export function useZooms(
     remove,
     autoDetect,
     detecting,
-    /** What the Player plays: the selected zoom is left out so you can aim it on the full frame. */
-    playing: outputZooms(project, plan, selectedId),
   };
 }
 

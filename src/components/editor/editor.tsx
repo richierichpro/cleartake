@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { mediaUrl, rebuildSegments } from "@/lib/client";
 import { identityPlan, outputToSource } from "@/lib/sync";
 import { voiceOf } from "@/lib/voice-settings";
+import { outputZooms } from "@/lib/zooms";
 import type { Project } from "@/lib/types";
 import { ControlBar, ZOOM_LEVELS } from "./control-bar";
 import { DebugDrawer } from "./debug-drawer";
@@ -66,6 +67,11 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
     [seek],
   );
   const zooms = useZooms(project, plan, onChange, onZoomSelected);
+  // Aiming (full frame + dashed window) only while paused inside the selected zoom; playing always shows real zooms.
+  const aimed = zooms.timeline.find((z) => z.id === zooms.selectedId);
+  const aiming =
+    !!aimed && !playback.playing && playback.currentTime >= aimed.outStart && playback.currentTime <= aimed.outEnd;
+  const playingZooms = outputZooms(project, plan, aiming ? zooms.selectedId : null);
 
   const [zoomIndex, setZoomIndex] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -134,8 +140,8 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
               plan={plan}
               playback={playback}
               debugBoxes={debugBoxes}
-              zooms={zooms.playing}
-              aim={zooms.selected ? { zoom: zooms.selected, onFocus: (x, y) => zooms.update(zooms.selected!.id, { x, y }) } : null}
+              zooms={playingZooms}
+              aim={aiming && zooms.selected ? { zoom: zooms.selected, onFocus: (x, y) => zooms.update(zooms.selected!.id, { x, y }) } : null}
             />
             <AnimatePresence>
               {debugOpen && (

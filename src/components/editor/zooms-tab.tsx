@@ -76,7 +76,7 @@ export function ZoomsTab({ zooms }: { zooms: Zooms }) {
               <Crosshair className="mt-0.5 size-4 shrink-0 text-brand" />
               <p className="text-xs leading-relaxed text-muted-foreground">
                 <span className="font-medium text-foreground">Click on the video</span> to choose where this zoom points. The
-                dashed frame shows what will be visible. Press Esc when you&apos;re done to watch it play.
+                dashed frame shows what will be visible. Press play to watch it zoom.
               </p>
             </div>
             <label className="flex cursor-pointer items-center justify-between text-[13px]">
