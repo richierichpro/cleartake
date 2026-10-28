@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { mutateProject, projectDir, readProject } from "@/lib/projects";
 import { isRunning } from "@/lib/pipeline";
+import { cleanPlan } from "@/lib/director";
 import { backfillVoiceWords } from "@/lib/voice";
 import { voiceOf } from "@/lib/voice-settings";
 import { BACKGROUND_PRESETS, PADDING_MAX, RADIUS_MAX, SHADOWS, visualsOf } from "@/lib/visuals";
@@ -25,7 +26,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]">
 }
 
 // Editable project settings: title, voice, edit (cuts / trim / splits, Step 9), visuals (Step 10), zooms (Step 13),
-// captions (Step 14).
+// captions (Step 14), director plan edits (Step 15).
 export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]">) {
   const { id } = await ctx.params;
   if (!(await readProject(id))) return Response.json({ error: "Project not found" }, { status: 404 });
@@ -37,6 +38,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     visuals?: { background?: { enabled?: unknown; preset?: unknown }; shadow?: unknown; radius?: unknown; padding?: unknown };
     zooms?: { enabled?: unknown; items?: unknown };
     captions?: { enabled?: unknown };
+    director?: unknown;
   };
   const project = await mutateProject(id, (p) => {
     if (typeof body.title === "string" && body.title.trim()) p.title = body.title.trim().slice(0, 120);
@@ -44,6 +46,8 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     if (body.visuals) applyVisuals(p, body.visuals);
     if (body.zooms) applyZooms(p, body.zooms);
     if (typeof body.captions?.enabled === "boolean") p.captions = { enabled: body.captions.enabled };
+    // The user's edits to the AI plan replace its content; when and how it was made stays.
+    if (body.director && p.director) p.director = { ...p.director, ...cleanPlan(body.director) };
     if (body.voice) {
       const { mode, voiceId, voiceName } = body.voice;
       p.voice = {

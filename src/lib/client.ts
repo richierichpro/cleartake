@@ -4,6 +4,7 @@ import type { Project, Transcript, Visuals, VoiceSettings, Zoom } from "./types"
 import type { Motion } from "./sync";
 import type { ZoomSuggestions } from "./zoom-suggest";
 import type { VoiceOption } from "./elevenlabs";
+import type { DirectorContent } from "./director";
 
 export const mediaUrl = (id: string, file: string) => `/api/projects/${id}/media/${file}`;
 
@@ -94,6 +95,7 @@ export async function updateProject(
     edit?: { cuts?: Project["cuts"]; trim?: Project["trim"] | null; splits?: number[] };
     zooms?: { enabled?: boolean; items?: Zoom[] };
     captions?: { enabled: boolean };
+    director?: DirectorContent;
     visuals?: {
       background?: { enabled?: boolean; preset?: string };
       shadow?: Visuals["shadow"];
@@ -160,6 +162,9 @@ export const splitSegment = (id: string, at: number) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ at }),
   }).then((r) => json<{ project: Project; id: string }>(r));
+
+export const runDirector = (id: string) =>
+  fetch(`/api/projects/${id}/director`, { method: "POST" }).then((r) => json<Project>(r));
 
 export const generateVoice = (id: string, segmentId: string) =>
   fetch(`/api/projects/${id}/voice/${segmentId}`, { method: "POST" }).then((r) => json<Project>(r));

@@ -42,6 +42,22 @@ export interface Project {
   visuals?: Visuals; // Step 10; DEFAULT_VISUALS when missing
   zooms?: { enabled: boolean; items: Zoom[] }; // Step 13; "Add zoom effects" toggles all without deleting
   captions?: { enabled: boolean }; // Step 14; off when missing
+  director?: DirectorPlan; // Step 15: the AI edit plan, reviewed and edited by the user
+}
+
+// Step 15: what the AI "director" suggests. Items point at a paragraph (and a phrase in it),
+// so they stay on the right moment when the edit retimes.
+export interface DirectorPlan {
+  title: string;
+  subtitle: string;
+  outro: string;
+  steps: { id: string; segmentId: string; phrase: string; label: string }[]; // shown when `phrase` (where a new task begins) is spoken
+  callouts: { id: string; segmentId: string; phrase: string; text: string }[]; // shown when `phrase` is spoken
+  emphasis: { id: string; segmentId: string; word: string }[]; // highlighted in captions
+  dropped: { kind: "step" | "callout" | "emphasis"; text: string; reason: string }[]; // AI items that failed validation (debug)
+  scriptKey: string; // the script it was made from, to flag when the script changed since
+  model: string;
+  at: string; // ISO
 }
 
 // Times in source (recording) seconds, so zooms stay on the right moment when the edit retimes.
