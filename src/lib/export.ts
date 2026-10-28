@@ -1,15 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 
-import { mutateProject, projectFile, readJson, readProject, writeJson } from "./projects";
-import { buildSyncPlan, identityPlan, type Motion } from "./sync";
+import { mutateProject, projectFile, readProject, writeJson } from "./projects";
+import { loadSyncPlan } from "./sync-server";
 import { voiceOf } from "./voice-settings";
 import { frameProps } from "./visuals";
 import { outputZooms } from "./zooms";
 import { buildCaptions, captionsOn } from "./captions";
 import { compositionSize, DEFAULT_QUALITY, FPS, type ExportQuality } from "@/remotion/constants";
 import type { RenderProps } from "@/remotion/root";
-import type { Transcript } from "./types";
 
 // Exports render in a child Node process (scripts/render.mjs). This module starts it,
 // forwards its progress into project.json, and cleans up old export files.
@@ -22,10 +21,7 @@ export async function startExport(id: string, origin: string, quality: ExportQua
   const project = await readProject(id);
   if (!project) throw new Error("Project not found");
 
-  // The same plan the editor's Player shows.
-  const motion = await readJson<Motion>(id, "motion.json");
-  const transcript = await readJson<Transcript>(id, "transcript.json");
-  const plan = motion ? buildSyncPlan(project, transcript?.words ?? [], motion) : identityPlan(project);
+  const { plan } = await loadSyncPlan(project);
   const media = (file: string) => `${origin}/api/projects/${id}/media/${file}`;
   const frame = frameProps(project, media);
   const size = compositionSize(project.video.width, project.video.height, quality, frame.framed);
