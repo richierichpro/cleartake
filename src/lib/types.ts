@@ -40,6 +40,18 @@ export interface Project {
   trim?: { start: number; end: number }; // keep only [start, end) of the recording
   splits?: number[]; // split points made with S; they define clickable pieces on the timeline
   visuals?: Visuals; // Step 10; DEFAULT_VISUALS when missing
+  zooms?: { enabled: boolean; items: Zoom[] }; // Step 13; "Add zoom effects" toggles all without deleting
+}
+
+// Times in source (recording) seconds, so zooms stay on the right moment when the edit retimes.
+export interface Zoom {
+  id: string;
+  start: number;
+  end: number;
+  x: number; // focus point, 0–1 of the recording
+  y: number;
+  scale: number; // 1.2–2.5
+  enabled: boolean;
 }
 
 export interface Visuals {

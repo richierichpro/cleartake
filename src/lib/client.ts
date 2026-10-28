@@ -1,6 +1,6 @@
 "use client";
 
-import type { Project, Transcript, Visuals, VoiceSettings } from "./types";
+import type { Project, Transcript, Visuals, VoiceSettings, Zoom } from "./types";
 import type { Motion } from "./sync";
 import type { ZoomSuggestions } from "./zoom-suggest";
 import type { VoiceOption } from "./elevenlabs";
@@ -92,6 +92,7 @@ export async function updateProject(
     title?: string;
     voice?: Partial<Pick<VoiceSettings, "mode" | "voiceId" | "voiceName">>;
     edit?: { cuts?: Project["cuts"]; trim?: Project["trim"] | null; splits?: number[] };
+    zooms?: { enabled?: boolean; items?: Zoom[] };
     visuals?: {
       background?: { enabled?: boolean; preset?: string };
       shadow?: Visuals["shadow"];

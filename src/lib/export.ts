@@ -5,6 +5,7 @@ import { mutateProject, projectFile, readJson, readProject, writeJson } from "./
 import { buildSyncPlan, identityPlan, type Motion } from "./sync";
 import { voiceOf } from "./voice-settings";
 import { frameProps } from "./visuals";
+import { outputZooms } from "./zooms";
 import { compositionSize, DEFAULT_QUALITY, FPS, type ExportQuality } from "@/remotion/constants";
 import type { RenderProps } from "@/remotion/root";
 import type { Transcript } from "./types";
@@ -33,6 +34,7 @@ export async function startExport(id: string, origin: string, quality: ExportQua
     voice: plan.voice.map((v) => ({ src: media(v.file), outputStart: v.outputStart, duration: v.duration })),
     muteOriginal: voiceOf(project).mode === "ai",
     frame,
+    zooms: outputZooms(project, plan),
     ...size,
     durationInFrames: Math.max(1, Math.round(plan.outputDuration * FPS)),
   };

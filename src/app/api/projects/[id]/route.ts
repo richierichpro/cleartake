@@ -3,7 +3,8 @@ import { mutateProject, projectDir, readProject } from "@/lib/projects";
 import { isRunning } from "@/lib/pipeline";
 import { voiceOf } from "@/lib/voice-settings";
 import { BACKGROUND_PRESETS, PADDING_MAX, RADIUS_MAX, SHADOWS, visualsOf } from "@/lib/visuals";
-import type { Cut, Project, Visuals, VoiceSettings } from "@/lib/types";
+import { ZOOM_LIMITS } from "@/lib/zooms";
+import type { Cut, Project, Visuals, VoiceSettings, Zoom } from "@/lib/types";
 
 const ACTIVE = ["transcribing", "writing", "voicing"];
 
@@ -22,7 +23,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]">
   return Response.json(project);
 }
 
-// Editable project settings: title, voice, edit (cuts / trim / splits, Step 9), visuals (Step 10).
+// Editable project settings: title, voice, edit (cuts / trim / splits, Step 9), visuals (Step 10), zooms (Step 13).
 export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]">) {
   const { id } = await ctx.params;
   if (!(await readProject(id))) return Response.json({ error: "Project not found" }, { status: 404 });
@@ -32,11 +33,13 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     voice?: Partial<VoiceSettings>;
     edit?: { cuts?: unknown; trim?: unknown; splits?: unknown };
     visuals?: { background?: { enabled?: unknown; preset?: unknown }; shadow?: unknown; radius?: unknown; padding?: unknown };
+    zooms?: { enabled?: unknown; items?: unknown };
   };
   const project = await mutateProject(id, (p) => {
     if (typeof body.title === "string" && body.title.trim()) p.title = body.title.trim().slice(0, 120);
     if (body.edit) applyEdit(p, body.edit);
     if (body.visuals) applyVisuals(p, body.visuals);
+    if (body.zooms) applyZooms(p, body.zooms);
     if (body.voice) {
       const { mode, voiceId, voiceName } = body.voice;
       p.voice = {
@@ -107,4 +110,33 @@ function applyVisuals(
   const padding = num(v.padding);
   if (padding !== null) next.padding = Math.round(Math.max(0, Math.min(PADDING_MAX, padding)));
   p.visuals = next;
+}
+
+/** Validates zooms: source-time ranges inside the video, focus 0–1, scale within limits. */
+function applyZooms(p: Project, z: { enabled?: unknown; items?: unknown }) {
+  const d = p.video.duration;
+  const cur = { enabled: p.zooms?.enabled ?? true, items: p.zooms?.items ?? [] };
+  if (typeof z.enabled === "boolean") cur.enabled = z.enabled;
+  if (Array.isArray(z.items)) {
+    const unit = (v: unknown) => Math.max(0, Math.min(1, num(v) ?? 0.5));
+    cur.items = z.items
+      .map((raw): Zoom | null => {
+        const start = num(raw?.start);
+        const end = num(raw?.end);
+        if (typeof raw?.id !== "string" || start === null || end === null) return null;
+        const zoom: Zoom = {
+          id: raw.id,
+          start: Math.max(0, Math.min(d, start)),
+          end: Math.max(0, Math.min(d, end)),
+          x: unit(raw.x),
+          y: unit(raw.y),
+          scale: Math.max(ZOOM_LIMITS.minScale, Math.min(ZOOM_LIMITS.maxScale, num(raw.scale) ?? ZOOM_LIMITS.defaultScale)),
+          enabled: raw.enabled !== false,
+        };
+        return zoom.end > zoom.start ? zoom : null;
+      })
+      .filter((x): x is Zoom => x !== null)
+      .sort((a, b) => a.start - b.start);
+  }
+  p.zooms = cur;
 }
