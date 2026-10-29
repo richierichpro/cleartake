@@ -1,4 +1,5 @@
-import type { Project, TranscriptWord } from "./types";
+import type { Project, TranscriptWord, VoiceWord } from "./types";
+import { norm } from "./text-match";
 import { clipStatus, estimateSeconds, voiceOf } from "./voice-settings";
 import { removedRanges, subtractRanges } from "./edits";
 
@@ -20,6 +21,9 @@ export const SYNC_CONFIG = {
   edgeKeep: 0.5, // trim before the first / after the last activity, keeping this much
   retakeMovingShare: 0.2, // a retake with less than this share of moving slots is cut, otherwise fast-forwarded
   maxSyncSpeed: 2, // never speed a paragraph up more than this to fit its voice
+  // Sync anchors: words the AI script kept from what was said line the video up inside a paragraph.
+  anchorRun: 2, // only words in a run of at least this many matching words in a row (no lone "the")
+  minAnchorGap: 1.2, // seconds of voice between anchors
 };
 export type SyncConfig = typeof SYNC_CONFIG;
 
@@ -66,6 +70,13 @@ export interface SegmentDecision {
   voiceEstimated: boolean; // no current clip yet, length is an estimate
   output: number; // final length in the edited video
   action: string;
+  anchors?: SyncAnchor[]; // where the voice was lined up with what was said (debug)
+}
+
+export interface SyncAnchor {
+  phrase: string; // the AI voice's words at the anchor
+  source: number; // when you said it (recording seconds)
+  voice: number; // when the AI voice says it (seconds into the clip)
 }
 
 export interface SyncPlan {
@@ -226,40 +237,40 @@ export function buildSyncPlan(
       decision.voice = voiceLen;
       decision.voiceEstimated = !current;
 
-      if (cleaned > voiceLen + 0.05) {
-        const factor = Math.min(cleaned / voiceLen, c.maxSyncSpeed);
-        own = own.map((p) => ({ ...p, speed: p.speed * factor }));
-        const left = cleaned / factor - voiceLen;
-        decision.action =
-          left > 0.05
-            ? `speed ×${factor.toFixed(2)} (max), then ${left.toFixed(1)}s without narration`
-            : `speed ×${factor.toFixed(2)}`;
-      } else if (voiceLen > cleaned + 0.05 && own.length) {
-        const hold = voiceLen - cleaned;
-        // Stillest frame: lowest change both into and out of it.
-        let best = -1;
-        let bestScore = Infinity;
-        for (const p of own) {
-          for (let i = Math.ceil(p.sourceStart * fps); i / fps < p.sourceEnd; i++) {
-            const score = Math.max(motion.scores[i] ?? 0, motion.scores[i + 1] ?? 0);
-            if (score <= bestScore) {
-              bestScore = score;
-              best = i;
-            }
-          }
-        }
-        const lastEnd = own[own.length - 1].sourceEnd;
-        const at = best < 0 ? lastEnd : Math.min(best / fps + 0.5 / fps, lastEnd);
-        own = own.flatMap((p) =>
-          at > p.sourceStart && at <= p.sourceEnd
-            ? [
-                { ...p, sourceEnd: at, freezeAfter: hold },
-                ...(at < p.sourceEnd ? [{ ...p, sourceStart: at }] : []),
-              ]
-            : [p],
-        );
-        decision.action = `freeze ${hold.toFixed(1)}s at ${at.toFixed(1)}s`;
-      } else decision.action = "fits";
+      // Line the video up with the voice at the anchors (or only at the paragraph start), then fit each
+      // stretch between anchors to the voice: speed up, or hold the stillest frame. A stretch that can't
+      // catch up hands the difference to the next one.
+      const anchors =
+        current && seg.voice?.words && own.length
+          ? syncAnchors(words.slice(seg.wordStart, seg.wordEnd), seg.voice.words, c).filter(
+              (a) => own.some((p) => a.source > p.sourceStart && a.source < p.sourceEnd) && a.voice < voiceLen,
+            )
+          : [];
+      const fitted: typeof own = [];
+      const notes: string[] = [];
+      let out = 0;
+      anchors.forEach((a, k) => {
+        if (k && a.source <= anchors[k - 1].source) a.source = -1; // keep them in order
+      });
+      const used = anchors.filter((a) => a.source >= 0);
+      const cuts = [-Infinity, ...used.map((a) => a.source), Infinity];
+      for (let k = 0; k < cuts.length - 1; k++) {
+        const chunk = own
+          .map((p) => ({ ...p, sourceStart: Math.max(p.sourceStart, cuts[k]), sourceEnd: Math.min(p.sourceEnd, cuts[k + 1]) }))
+          .filter((p) => p.sourceEnd - p.sourceStart > 0.01);
+        const target = (k < used.length ? used[k].voice : voiceLen) - out;
+        const r = fitToVoice(chunk, target, motion, fps, c);
+        fitted.push(...r.pieces);
+        out += lengthOf(r.pieces);
+        if (r.note) notes.push(r.note);
+      }
+      own = fitted;
+      const left = out - voiceLen;
+      decision.action =
+        (used.length ? `synced at ${used.length} phrase${used.length > 1 ? "s" : ""}: ` : "") +
+        (notes.length ? notes.join(", ") : "fits") +
+        (left > 0.05 ? `, then ${left.toFixed(1)}s without narration` : "");
+      if (used.length) decision.anchors = used;
 
       if (current && own.length) voice.push({ segmentId: seg.id, file: seg.voice!.file, outputStart: cursor, duration: voiceLen });
     }
@@ -273,6 +284,80 @@ export function buildSyncPlan(
   });
 
   return { states, actions, pieces, voice, decisions, sourceDuration: duration, outputDuration: cursor };
+}
+
+type FitPiece = { sourceStart: number; sourceEnd: number; speed: number; freezeAfter: number };
+
+/** Fits pieces to `target` seconds: speed up (≤ maxSyncSpeed) or hold the stillest frame. */
+function fitToVoice(ps: FitPiece[], target: number, motion: Motion, fps: number, c: SyncConfig) {
+  const len = ps.reduce((t, p) => t + (p.sourceEnd - p.sourceStart) / p.speed + p.freezeAfter, 0);
+  if (!ps.length) return { pieces: ps, note: "" };
+  if (len > target + 0.05) {
+    const factor = target > 0.05 ? Math.min(len / target, c.maxSyncSpeed) : c.maxSyncSpeed;
+    return { pieces: ps.map((p) => ({ ...p, speed: p.speed * factor })), note: `×${factor.toFixed(2)}${factor >= c.maxSyncSpeed ? " (max)" : ""}` };
+  }
+  if (target > len + 0.05) {
+    const hold = target - len;
+    // Stillest frame: lowest change both into and out of it.
+    let best = -1;
+    let bestScore = Infinity;
+    for (const p of ps) {
+      for (let i = Math.ceil(p.sourceStart * fps); i / fps < p.sourceEnd; i++) {
+        const score = Math.max(motion.scores[i] ?? 0, motion.scores[i + 1] ?? 0);
+        if (score <= bestScore) {
+          bestScore = score;
+          best = i;
+        }
+      }
+    }
+    const lastEnd = ps[ps.length - 1].sourceEnd;
+    const at = best < 0 ? lastEnd : Math.min(best / fps + 0.5 / fps, lastEnd);
+    const pieces = ps.flatMap((p) =>
+      at > p.sourceStart && at <= p.sourceEnd
+        ? [{ ...p, sourceEnd: at, freezeAfter: p.freezeAfter + hold }, ...(at < p.sourceEnd ? [{ ...p, sourceStart: at, freezeAfter: 0 }] : [])]
+        : [p],
+    );
+    return { pieces, note: `freeze ${hold.toFixed(1)}s at ${at.toFixed(1)}s` };
+  }
+  return { pieces: ps, note: "" };
+}
+
+/**
+ * Sync anchors: words the AI script kept from what was said, as (when you said it, when the voice says it).
+ * Longest common subsequence of the two word lists; only words in a run of ≥ anchorRun matches count,
+ * spaced ≥ minAnchorGap apart in the voice.
+ */
+export function syncAnchors(said: TranscriptWord[], voiced: VoiceWord[], c: SyncConfig = SYNC_CONFIG): SyncAnchor[] {
+  const a = said.map((w) => norm(w.text));
+  const b = voiced.map((w) => norm(w.text));
+  const n = a.length;
+  const m = b.length;
+  const lcs = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) lcs[i][j] = a[i] && a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  }
+  const pairs: [number, number][] = [];
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    if (a[i] && a[i] === b[j]) pairs.push([i++, j++]);
+    else if (lcs[i + 1][j] >= lcs[i][j + 1]) i++;
+    else j++;
+  }
+  // Length of the run of consecutive matches each pair belongs to.
+  const run = new Array<number>(pairs.length).fill(1);
+  for (let k = 0; k < pairs.length; ) {
+    let e = k + 1;
+    while (e < pairs.length && pairs[e][0] === pairs[e - 1][0] + 1 && pairs[e][1] === pairs[e - 1][1] + 1) e++;
+    for (let q = k; q < e; q++) run[q] = e - k;
+    k = e;
+  }
+  const anchors: SyncAnchor[] = [];
+  let last = 0; // the paragraph start is already lined up
+  pairs.forEach(([i, j], k) => {
+    if (run[k] < c.anchorRun || voiced[j].start - last < c.minAnchorGap) return;
+    anchors.push({ phrase: voiced.slice(j, j + 3).map((w) => w.text).join(" "), source: said[i].start, voice: voiced[j].start });
+    last = voiced[j].start;
+  });
+  return anchors;
 }
 
 // ---- Output ↔ source time ------------------------------------------------------

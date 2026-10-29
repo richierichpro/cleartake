@@ -261,6 +261,7 @@ function SyncDebug({ sync, playback }: { sync: ReturnType<typeof useSyncPlan>; p
     `moving > ${c.movingFastAfter}s → ${c.fastSpeed}×`,
     `edges keep ${c.edgeKeep}s`,
     `max sync ${c.maxSyncSpeed}×`,
+    `anchors: ${c.anchorRun}+ matching words, ${c.minAnchorGap}s apart`,
   ];
 
   return (
@@ -330,7 +331,14 @@ function SyncDebug({ sync, playback }: { sync: ReturnType<typeof useSyncPlan>; p
                     {d.voice === null ? "—" : `${d.voiceEstimated ? "≈" : ""}${d.voice.toFixed(1)}s`}
                   </td>
                   <td className="py-1.5 pr-2 font-medium">{d.output.toFixed(1)}s</td>
-                  <td className={cn("py-1.5", d.action.includes("without narration") && "text-amber-600")}>{d.action}</td>
+                  <td className={cn("py-1.5", d.action.includes("without narration") && "text-amber-600")}>
+                    {d.action}
+                    {d.anchors && (
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        {d.anchors.map((a) => `“${a.phrase}” ${a.source.toFixed(1)}s`).join(" · ")}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

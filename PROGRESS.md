@@ -20,7 +20,7 @@ Spec: [SPEC.md](SPEC.md). App name: **Cleartake**.
 - [x] Step 15 – Finalize + polish, split in two:
   - [x] 15a – Finalize button + AI director plan, reviewed in a panel
   - [x] 15b – Render the plan: intro/outro scenes, step badges, callouts, caption emphasis, crossfades
-- Planned (Step 6b, if Step 6 shows drift): sync points. A few auto-placed anchors inside a paragraph (at pauses and screen changes), kept through the AI rewrite, drawn as small orange ticks; hover shows frame + Synced/Outdated, "Move to playhead", delete. Retime piecewise between anchors.
+- Step 6b – sync inside paragraphs (done, automatic): drift appeared on the Milo recording (voice said "destination" while the screen was on dates, 1.8s off). `syncAnchors()` matches what was said (transcript words) with the AI voice's words (longest common subsequence; runs of ≥ 2 matching words, ≥ 1.2s apart) and each stretch between anchors is fitted on its own (`fitToVoice`: speed ≤ 2× or hold the stillest frame; a stretch that can't catch up hands the difference to the next). No anchors → one fit per paragraph as before. Milo: worst drift 1.84s → 0.37s. Debug → Cleanup & sync lists the anchor phrases.
 - Open question: paragraphs are 10–30s. Consider 5–15s (config: min 5, softMax 12, max 18, pause 0.7) if Step 6 shows sync drift. Decide before editing real scripts, because Rebuild wipes edits.
 
 Each step is committed separately on `main`, split into a few logical commits.
