@@ -81,7 +81,7 @@ async function runPipeline(id: string) {
       step,
       words
         ? `Transcribed ${words} words and polished the script`
-        : "No speech found. Was your microphone on while recording?",
+        : "No speech found. You can write the narration in the editor and an AI voice will read it.",
     );
   } catch (err) {
     await mutateProject(id, (p) => {

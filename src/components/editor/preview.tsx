@@ -124,6 +124,7 @@ export function Preview({
             spaceKeyToPlayOrPause={false}
             doubleClickToFullscreen={false}
             moveToBeginningWhenEnded={false}
+            acknowledgeRemotionLicense // free for individuals and small teams: remotion.dev/license
             style={{ width: "100%", height: "100%" }}
             errorFallback={() => <PlaybackError />}
           />

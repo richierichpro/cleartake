@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated: the Remotion render bundle, project data, caches.
+    ".remotion-bundle/**",
+    "data/**",
+    ".cache/**",
   ]),
 ]);
 

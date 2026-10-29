@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { FileQuestion } from "lucide-react";
@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { buildCaptions, captionsOn } from "@/lib/captions";
 import { mediaUrl, rebuildSegments, saveState, updateProject } from "@/lib/client";
-import { historyReducer, initialHistory } from "@/lib/history";
+import { historyReducer, initialHistory, snapshotOf } from "@/lib/history";
 import { identityPlan, outputToSource } from "@/lib/sync";
 import { voiceOf } from "@/lib/voice-settings";
 import { outputZooms } from "@/lib/zooms";
@@ -49,11 +49,18 @@ export function Editor({ id }: { id: string }) {
   // Accepts a project or an updater, like setState. Edits are recorded for undo.
   const update: ProjectUpdate = useCallback((next) => dispatch({ type: "set", next, at: Date.now() }), []);
 
-  // After undo / redo, save the restored state once things settle. The wait outlasts the panels'
-  // own delayed saves (≤ 0.7s), so the restored state is what ends up on the server.
+  // After undo / redo, save once things settle. The wait outlasts the panels' own delayed saves (≤ 0.7s);
+  // it saves the state at that moment (not the snapshot), so an edit made right after an undo isn't lost.
+  const latest = useRef(project);
+  useEffect(() => {
+    latest.current = project;
+  });
   useEffect(() => {
     if (!restored) return;
-    const t = setTimeout(() => saveState(id, restored).catch(() => toast.error("Couldn't save the undo")), 900);
+    const t = setTimeout(() => {
+      const p = latest.current;
+      if (p && p !== "missing") saveState(id, snapshotOf(p)).catch(() => toast.error("Couldn't save the undo"));
+    }, 900);
     return () => clearTimeout(t);
   }, [restored, id]);
 
