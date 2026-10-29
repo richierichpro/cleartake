@@ -2,6 +2,7 @@ import { AudioLines, Captions, FileVideo, ScanSearch } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { HeroVisual } from "@/components/home/hero-visual";
 import { ProjectGrid } from "@/components/home/project-grid";
+import { SampleLink } from "@/components/home/sample-link";
 import { UploadZone } from "@/components/home/upload-zone";
 
 const STEPS = [
@@ -41,6 +42,7 @@ export default function Home() {
             </p>
             <div className="mt-8 max-w-md">
               <UploadZone />
+              <SampleLink />
             </div>
           </div>
           <div className="hidden lg:block">

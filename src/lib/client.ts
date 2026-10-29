@@ -133,6 +133,12 @@ export async function rebuildSegments(id: string) {
   return body as Project;
 }
 
+export const sampleInfo = () =>
+  fetch("/api/projects/sample").then((r) => json<{ available: boolean; title?: string; duration?: number }>(r));
+
+/** A fresh copy of the sample project. */
+export const openSample = () => fetch("/api/projects/sample", { method: "POST" }).then((r) => json<Project>(r));
+
 /** Undo / redo: saves the restored editable state in one request. */
 export const saveState = (id: string, state: Snapshot) =>
   fetch(`/api/projects/${id}/state`, {
