@@ -90,3 +90,20 @@ export function buildSegments(
     };
   });
 }
+
+/** One empty paragraph over the whole video, for a recording without narration (the user writes it). */
+export function blankSegment(videoDuration: number): Segment {
+  return {
+    id: "s1",
+    start: 0,
+    end: videoDuration,
+    speechStart: 0,
+    speechEnd: 0,
+    wordStart: 0,
+    wordEnd: 0,
+    originalText: "",
+    text: "",
+    breakReason: "end",
+    pauseAfter: 0,
+  };
+}

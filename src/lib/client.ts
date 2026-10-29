@@ -132,6 +132,18 @@ export async function rebuildSegments(id: string) {
   return body as Project;
 }
 
+/** No narration in the recording: start an empty script to write and voice with AI. */
+export async function startBlankScript(id: string) {
+  const res = await fetch(`/api/projects/${id}/segments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ blank: true }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? "Could not start the script");
+  return body as Project;
+}
+
 export async function rewriteScript(id: string) {
   const res = await fetch(`/api/projects/${id}/rewrite`, { method: "POST" });
   const body = await res.json();

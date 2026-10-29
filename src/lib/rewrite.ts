@@ -43,11 +43,13 @@ type Reply = { segments: { id: string; text: string; isRetake: boolean }[] };
  */
 export async function rewriteScript(project: Project, keyterms: string[] = []) {
   const segments = project.segments ?? [];
-  if (!segments.length) return { segments, missing: 0 };
+  // Paragraphs with nothing said (written by hand for a silent recording) aren't rewritten.
+  const spoken = segments.filter((s) => s.originalText.trim());
+  if (!spoken.length) return { segments, missing: 0 };
 
   const user = JSON.stringify({
     ...(keyterms.length ? { productTerms: keyterms } : {}),
-    segments: segments.map((s) => ({ id: s.id, text: s.originalText })),
+    segments: spoken.map((s) => ({ id: s.id, text: s.originalText })),
   });
   const words = segments.reduce((n, s) => n + s.originalText.split(/\s+/).length, 0);
   const reply = await chatJson<Reply>({
@@ -61,6 +63,7 @@ export async function rewriteScript(project: Project, keyterms: string[] = []) {
   const byId = new Map(reply.segments.map((r) => [r.id, r]));
   let missing = 0;
   const updated = segments.map((s) => {
+    if (!s.originalText.trim()) return s;
     const r = byId.get(s.id);
     if (!r) {
       missing++;

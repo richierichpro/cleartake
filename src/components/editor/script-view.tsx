@@ -9,6 +9,7 @@ import {
   EyeOff,
   FileText,
   Loader2,
+  PenLine,
   Play,
   Plus,
   RefreshCw,
@@ -21,7 +22,7 @@ import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { generateVoice, rewriteScript, splitSegment, updateSegment } from "@/lib/client";
+import { generateVoice, rewriteScript, splitSegment, startBlankScript, updateSegment } from "@/lib/client";
 import { isSegmentRemoved } from "@/lib/edits";
 import { outputToSource, segmentRanges, type SyncPlan } from "@/lib/sync";
 import { formatTime } from "@/lib/format";
@@ -233,8 +234,24 @@ export function ScriptView({
   if (segments.length === 0) {
     return (
       <Empty
-        title="No speech found"
-        hint="We couldn't hear any narration in this recording. Check that your microphone was on when you recorded, then upload it again."
+        title="No narration in this recording"
+        hint="Write what the voice should say and an AI voice reads it, timed to your video. Add a paragraph wherever the screen moves on."
+        action={
+          <Button
+            className="mt-5 gap-2 px-4"
+            onClick={async () => {
+              try {
+                const updated = await startBlankScript(project.id);
+                applyServer(updated);
+                setFocusId(updated.segments?.[0]?.id ?? null);
+              } catch (err) {
+                toast.error("Couldn't start the script", { description: err instanceof Error ? err.message : undefined });
+              }
+            }}
+          >
+            <PenLine /> Write the narration
+          </Button>
+        }
       />
     );
   }
@@ -282,7 +299,7 @@ export function ScriptView({
 
       <div className="px-4 pt-2">
         <AnimatePresence initial={false}>
-          {!project.rewrite && (
+          {!project.rewrite && segments.some((s) => s.originalText.trim()) && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
