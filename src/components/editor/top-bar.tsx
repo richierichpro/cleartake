@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bug, Check, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, Bug, Check, Loader2, Redo2, Sparkles, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -11,19 +11,31 @@ import { ExportButton } from "./export-button";
 import { updateProject } from "@/lib/client";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
+import type { History } from "./editor";
 
 interface Props {
   project: Project;
   onChange: (p: Project) => void;
   debugOpen: boolean;
   onToggleDebug: () => void;
+  history: History;
   finalizeOpen: boolean;
   finalizing: boolean;
   onFinalize: () => void;
   duration: number; // edited video length
 }
 
-export function TopBar({ project, onChange, debugOpen, onToggleDebug, finalizeOpen, finalizing, onFinalize, duration }: Props) {
+export function TopBar({
+  project,
+  onChange,
+  debugOpen,
+  onToggleDebug,
+  history,
+  finalizeOpen,
+  finalizing,
+  onFinalize,
+  duration,
+}: Props) {
   const [title, setTitle] = useState(project.title);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
@@ -77,6 +89,15 @@ export function TopBar({ project, onChange, debugOpen, onToggleDebug, finalizeOp
       </span>
 
       <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center">
+          <HistoryButton label="Undo" keys="⌘Z" disabled={!history.canUndo} onClick={history.undo}>
+            <Undo2 />
+          </HistoryButton>
+          <HistoryButton label="Redo" keys="⇧⌘Z" disabled={!history.canRedo} onClick={history.redo}>
+            <Redo2 />
+          </HistoryButton>
+        </div>
+        <div className="mx-1 h-5 w-px bg-border" />
         <Tooltip>
           <TooltipTrigger
             render={
@@ -106,5 +127,41 @@ export function TopBar({ project, onChange, debugOpen, onToggleDebug, finalizeOp
         <ExportButton project={project} duration={duration} />
       </div>
     </header>
+  );
+}
+
+function HistoryButton({
+  label,
+  keys,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  keys: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={label}
+            disabled={disabled}
+            onClick={onClick}
+            className="text-muted-foreground hover:text-foreground"
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {label} <span className="ml-1 text-background/60">{keys}</span>
+      </TooltipContent>
+    </Tooltip>
   );
 }

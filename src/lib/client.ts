@@ -5,6 +5,7 @@ import type { Motion } from "./sync";
 import type { ZoomSuggestions } from "./zoom-suggest";
 import type { VoiceOption } from "./elevenlabs";
 import type { DirectorContent } from "./director";
+import type { Snapshot } from "./history";
 
 export const mediaUrl = (id: string, file: string) => `/api/projects/${id}/media/${file}`;
 
@@ -131,6 +132,14 @@ export async function rebuildSegments(id: string) {
   if (!res.ok) throw new Error(body.error ?? "Could not build segments");
   return body as Project;
 }
+
+/** Undo / redo: saves the restored editable state in one request. */
+export const saveState = (id: string, state: Snapshot) =>
+  fetch(`/api/projects/${id}/state`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state),
+  }).then((r) => json<Project>(r));
 
 /** No narration in the recording: start an empty script to write and voice with AI. */
 export async function startBlankScript(id: string) {

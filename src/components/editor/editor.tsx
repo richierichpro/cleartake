@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { FileQuestion } from "lucide-react";
@@ -8,7 +8,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { buildCaptions, captionsOn } from "@/lib/captions";
-import { mediaUrl, rebuildSegments, updateProject } from "@/lib/client";
+import { mediaUrl, rebuildSegments, saveState, updateProject } from "@/lib/client";
+import { historyReducer, initialHistory } from "@/lib/history";
 import { identityPlan, outputToSource } from "@/lib/sync";
 import { voiceOf } from "@/lib/voice-settings";
 import { outputZooms } from "@/lib/zooms";
@@ -34,29 +35,45 @@ import { scriptKey } from "@/lib/director";
 import { buildOverlays, sceneLengths } from "@/lib/overlays";
 
 export function Editor({ id }: { id: string }) {
-  const [project, setProject] = useState<Project | null | "missing">(null);
+  // The project plus its undo / redo history (lib/history.ts).
+  const [state, dispatch] = useReducer(historyReducer, initialHistory);
+  const { project, restored } = state;
 
   useEffect(() => {
     fetch(`/api/projects/${id}`)
       .then((r) => (r.ok ? r.json() : "missing"))
-      .then(setProject)
-      .catch(() => setProject("missing"));
+      .then((p) => dispatch({ type: "load", project: p }))
+      .catch(() => dispatch({ type: "load", project: "missing" }));
   }, [id]);
 
-  // Accepts a project or an updater, like setState.
-  const update: ProjectUpdate = useCallback(
-    (next) => setProject((prev) => (typeof next === "function" ? next(prev as Project) : next)),
-    [],
+  // Accepts a project or an updater, like setState. Edits are recorded for undo.
+  const update: ProjectUpdate = useCallback((next) => dispatch({ type: "set", next, at: Date.now() }), []);
+
+  // After undo / redo, save the restored state once things settle. The wait outlasts the panels'
+  // own delayed saves (≤ 0.7s), so the restored state is what ends up on the server.
+  useEffect(() => {
+    if (!restored) return;
+    const t = setTimeout(() => saveState(id, restored).catch(() => toast.error("Couldn't save the undo")), 900);
+    return () => clearTimeout(t);
+  }, [restored, id]);
+
+  const canUndo = state.past.length > 0;
+  const canRedo = state.future.length > 0;
+  const history = useMemo(
+    () => ({ canUndo, canRedo, undo: () => dispatch({ type: "undo" }), redo: () => dispatch({ type: "redo" }) }),
+    [canUndo, canRedo],
   );
 
   if (project === null) return <EditorSkeleton />;
   if (project === "missing") return <ProjectMissing />;
-  return <EditorLoaded project={project} onChange={update} />;
+  return <EditorLoaded project={project} onChange={update} history={history} />;
 }
+
+export type History = { canUndo: boolean; canRedo: boolean; undo: () => void; redo: () => void };
 
 export type ProjectUpdate = (next: Project | ((prev: Project) => Project)) => void;
 
-function EditorLoaded({ project, onChange }: { project: Project; onChange: ProjectUpdate }) {
+function EditorLoaded({ project, onChange, history }: { project: Project; onChange: ProjectUpdate; history: History }) {
   const sync = useSyncPlan(project);
   // Until screen activity is analyzed, play the recording as-is.
   const plan = useMemo(() => sync.plan ?? identityPlan(project), [sync.plan, project]);
@@ -128,9 +145,18 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
   // (unless the user is typing).
   const { split, cutSelection, setSelection } = edits;
   const { selectedId: selectedZoom, remove: removeZoom, select: selectZoom } = zooms;
+  const { undo, redo } = history;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
+      // ⌘Z / ⇧⌘Z (Ctrl on Windows): undo / redo the edit. In a text field, the field's own undo works on the text.
+      if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z" || e.key === "y")) {
+        if (el.closest("input, textarea, [contenteditable=true]")) return;
+        e.preventDefault();
+        if (e.key === "y" || e.shiftKey) redo();
+        else undo();
+        return;
+      }
       if (el.closest("input, textarea, [contenteditable=true]") || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === "Space") {
         e.preventDefault();
@@ -146,11 +172,12 @@ function EditorLoaded({ project, onChange }: { project: Project; onChange: Proje
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, split, cutSelection, setSelection, selectedZoom, removeZoom, selectZoom]);
+  }, [toggle, split, cutSelection, setSelection, selectedZoom, removeZoom, selectZoom, undo, redo]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
       <TopBar project={project} onChange={onChange} debugOpen={debugOpen} onToggleDebug={() => setDrawer((o) => (o === "debug" ? null : "debug"))}
+        history={history}
         finalizeOpen={drawer === "finalize"}
         finalizing={finalize.running}
         onFinalize={() => (drawer === "finalize" ? setDrawer(null) : openFinalize())}
