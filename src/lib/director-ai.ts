@@ -9,12 +9,12 @@ import type { DirectorPlan } from "./types";
 // Step 15: the AI "director" pass. One LLM call over the final script, timeline and zooms;
 // the reply is validated (unknown paragraphs, words not in the text, over the limits) and saved for review.
 
-const SYSTEM = (maxCallouts: number) => `You are the editor of a short screen-recorded product demo. You get the narration split into paragraphs, each with its time in the final video (seconds), and the zooms already placed. Plan the on-screen text that makes the video look professional. Be restrained: less is better.
+const SYSTEM = (maxCallouts: number, steps: { min: number; max: number }) => `You are the editor of a short screen-recorded product demo. You get the narration split into paragraphs, each with its time in the final video (seconds), and the zooms already placed. Plan the on-screen text that makes the video look professional. Step labels guide the viewer through every task; be restrained with callouts and emphasis.
 
 Return:
 - title: the title for the intro card, 2–6 words, Title Case, no trailing punctuation. Use the product name if one is mentioned.
 - subtitle: one short line under the title, at most 10 words: what the viewer will see or learn.
-- steps: step labels shown where a NEW task begins (for example "Add your friends", "Plan the trip"). Skip parts that only introduce or wrap up. 2–4 words, start with a verb, sentence case. paragraphId = the paragraph where the task begins; phrase: 1–4 words copied exactly from that paragraph's text, said where the task begins (a paragraph can contain more than one task). Steps must be at least 5 seconds apart.
+- steps: step labels that walk the viewer through the demo like chapters (for example "Add your friends", "Set dates and budget", "Review the itinerary"). Give every distinct task its own label, including looking at or using the result; skip only a pure introduction ("This is X"). Actions said in one quick breath can share a label ("Set dates, vibe and budget"). Aim for ${steps.min}–${steps.max} labels for this video (about one every 4–6 seconds), fewer only if the narration has fewer tasks. 2–5 words, start with a verb, sentence case. paragraphId = the paragraph where the task begins; phrase: 1–4 words copied exactly from that paragraph's text, said where the task begins (a paragraph can contain several tasks). Keep labels at least 2.5 seconds apart, so each can be read.
 - callouts: short lower-third notes for a key point the viewer shouldn't miss (a benefit, a tip, a number). At most ${maxCallouts}. text: 2–6 words, not a repeat of a step label. phrase: 1–4 words copied exactly from that paragraph's text, said at the moment the callout should appear. Prefer moments without a zoom.
 - emphasis: up to ${DIRECTOR_CONFIG.maxEmphasisPerParagraph} important words per paragraph to highlight in the captions (product names, key actions, numbers). One word each, copied exactly from the paragraph's text. Return none for a paragraph with nothing important.
 - outro: one closing line for the end card, at most 8 words (a call to action or a summary).
@@ -58,8 +58,10 @@ export async function runDirector(projectId: string) {
   if (!paragraphs.length) throw new Error("There's no narration to plan from yet");
 
   const maxCallouts = Math.max(1, Math.floor(plan.outputDuration / DIRECTOR_CONFIG.calloutEvery));
+  // About one step label every 4–6 seconds of video.
+  const steps = { min: Math.max(2, Math.floor(plan.outputDuration / 6)), max: Math.max(3, Math.ceil(plan.outputDuration / 4)) };
   const reply = await chatJson<Reply>({
-    system: SYSTEM(maxCallouts),
+    system: SYSTEM(maxCallouts, steps),
     user: JSON.stringify({
       ...(project.keyterms?.length ? { productTerms: project.keyterms } : {}),
       videoLength: round(plan.outputDuration),
