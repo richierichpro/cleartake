@@ -4,11 +4,16 @@ import { mutateProject, projectFile, readJson, readProject, writeJson } from "./
 import { rewriteScript } from "./rewrite";
 import { buildSegments } from "./segments";
 import { analyzeActivity } from "./motion";
+import { generateSegmentVoice } from "./voice";
+import { clipStatus, voiceOf } from "./voice-settings";
 import type { ProjectStatus, Transcript } from "./types";
 
 // Processing runs in the background inside the Next server process.
 // The Processing screen polls project.json for status + statusDetail.
-const running = new Set<string>();
+// Kept on globalThis: in dev, each route can load its own copy of this module, and they must all see
+// the same jobs (otherwise GET /projects/[id] thinks a running job was interrupted).
+const jobs = globalThis as unknown as { demopolishProcessing?: Set<string> };
+const running = (jobs.demopolishProcessing ??= new Set<string>());
 
 export const isRunning = (id: string) => running.has(id);
 
@@ -74,14 +79,36 @@ async function runPipeline(id: string) {
       });
     }
 
-    // Voice generation plugs in here in Step 5.
+    // Record the AI voice right away, so the first preview already talks. A failure here (no key,
+    // out of credits) doesn't fail processing: the editor can generate it later.
+    const scripted = (await readProject(id))!;
+    const v = voiceOf(scripted);
+    const todo =
+      v.mode === "ai" ? (scripted.segments ?? []).filter((seg) => ["none", "outdated"].includes(clipStatus(seg, v))) : [];
+    let voiced = false;
+    let voiceProblem = "";
+    if (todo.length) {
+      step = "voicing";
+      try {
+        for (const [i, seg] of todo.entries()) {
+          await setStatus(id, step, `Recording the AI voice (${i + 1} of ${todo.length})…`);
+          await generateSegmentVoice(id, seg.id);
+        }
+        voiced = true;
+      } catch (err) {
+        voiceProblem = err instanceof Error ? err.message : String(err);
+      }
+    }
+
     step = "ready";
     await setStatus(
       id,
       step,
-      words
-        ? `Transcribed ${words} words and polished the script`
-        : "No speech found. You can write the narration in the editor and an AI voice will read it.",
+      !words
+        ? "No speech found. You can write the narration in the editor and an AI voice will read it."
+        : voiceProblem
+          ? `Script ready. The AI voice will be generated in the editor (${voiceProblem})`
+          : `Transcribed ${words} words, polished the script${voiced ? " and recorded the AI voice" : ""}`,
     );
   } catch (err) {
     await mutateProject(id, (p) => {

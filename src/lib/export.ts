@@ -13,7 +13,9 @@ import type { RenderProps } from "@/remotion/root";
 
 // Exports render in a child Node process (scripts/render.mjs). This module starts it,
 // forwards its progress into project.json, and cleans up old export files.
-const running = new Map<string, ChildProcess>();
+// Shared via globalThis, like the processing jobs (lib/pipeline.ts): every route must see the same exports.
+const jobs = globalThis as unknown as { demopolishExports?: Map<string, ChildProcess> };
+const running = (jobs.demopolishExports ??= new Map<string, ChildProcess>());
 
 export const isExporting = (id: string) => running.has(id);
 

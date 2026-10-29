@@ -15,26 +15,23 @@ import { cn } from "@/lib/utils";
 import type { Project, ProjectStatus } from "@/lib/types";
 import { KeytermsInput } from "./keyterms-input";
 
-type StepState = "done" | "active" | "pending" | "error" | "later";
+type StepState = "done" | "active" | "pending" | "error";
 
-// "later" steps are part of the pipeline but not built yet; they're skipped for now.
-const STEPS: { id: ProjectStatus | "uploading"; label: string; later?: boolean }[] = [
+const STEPS: { id: ProjectStatus | "uploading"; label: string }[] = [
   { id: "uploading", label: "Uploading" },
   { id: "transcribing", label: "Transcribing" },
   { id: "writing", label: "Writing script" },
-  { id: "voicing", label: "Generating voice", later: true },
+  { id: "voicing", label: "Recording AI voice" },
   { id: "ready", label: "Ready" },
 ];
 const ORDER = STEPS.map((s) => s.id);
 
 function stepState(index: number, project: Project): StepState {
   if (index === 0) return "done"; // the file is on disk by the time this screen exists
-  const step = STEPS[index];
   if (project.status === "uploaded") return "pending";
   const failedAt = project.status === "error" ? ORDER.indexOf(project.error?.step ?? "transcribing") : -1;
   const current = failedAt >= 0 ? failedAt : ORDER.indexOf(project.status);
   if (index === failedAt) return "error";
-  if (step.later) return current > index ? "later" : "pending";
   if (project.status === "ready" && index === current) return "done";
   if (index < current) return "done";
   if (index === current) return "active";
@@ -139,13 +136,11 @@ export function ProcessingScreen({ id }: { id: string }) {
                           ? project.statusDetail
                           : state === "error"
                             ? project.error?.message
-                            : state === "later"
-                              ? "You'll pick a voice in the editor"
-                              : step.id === "ready" && state === "done"
-                                ? project.statusDetail?.startsWith("No speech")
-                                  ? project.statusDetail
-                                  : "Opening the editor…"
-                                : undefined
+                            : step.id === "ready" && state === "done"
+                              ? project.statusDetail?.startsWith("No speech")
+                                ? project.statusDetail
+                                : "Opening the editor…"
+                              : undefined
                       }
                       elapsed={state === "active" ? elapsed : undefined}
                     />
@@ -237,7 +232,7 @@ function Step({
           <span
             className={cn(
               "text-sm transition-colors",
-              state === "pending" || state === "later" ? "text-muted-foreground" : "font-medium text-foreground",
+              state === "pending" ? "text-muted-foreground" : "font-medium text-foreground",
             )}
           >
             {label}
@@ -297,12 +292,7 @@ function StepIcon({ state }: { state: StepState }) {
             <X className="size-3.5" strokeWidth={2.5} />
           </motion.span>
         )}
-        {(state === "pending" || state === "later") && (
-          <motion.span
-            key="pending"
-            className={cn("size-6 rounded-full border-2", state === "later" ? "border-dashed border-border" : "border-border")}
-          />
-        )}
+        {state === "pending" && <motion.span key="pending" className="size-6 rounded-full border-2 border-border" />}
       </AnimatePresence>
     </div>
   );
