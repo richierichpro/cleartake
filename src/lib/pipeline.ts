@@ -12,8 +12,8 @@ import type { ProjectStatus, Transcript } from "./types";
 // The Processing screen polls project.json for status + statusDetail.
 // Kept on globalThis: in dev, each route can load its own copy of this module, and they must all see
 // the same jobs (otherwise GET /projects/[id] thinks a running job was interrupted).
-const jobs = globalThis as unknown as { demopolishProcessing?: Set<string> };
-const running = (jobs.demopolishProcessing ??= new Set<string>());
+const jobs = globalThis as unknown as { cleartakeProcessing?: Set<string> };
+const running = (jobs.cleartakeProcessing ??= new Set<string>());
 
 export const isRunning = (id: string) => running.has(id);
 

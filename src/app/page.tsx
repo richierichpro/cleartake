@@ -37,7 +37,7 @@ export default function Home() {
               Turn a raw recording into a <span className="whitespace-nowrap">studio-quality</span> demo video
             </h1>
             <p className="mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
-              Talk through your screen however it comes out, ums, retakes and all. Demopolish rewrites what you said, re-records it in a
+              Talk through your screen however it comes out, ums, retakes and all. Cleartake rewrites what you said, re-records it in a
               natural AI voice, retimes the video to match and adds zooms, captions and title cards, in minutes.
             </p>
             <div className="mt-8 max-w-md">

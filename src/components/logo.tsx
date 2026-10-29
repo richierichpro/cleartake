@@ -14,7 +14,7 @@ export function Logo() {
   return (
     <div className="flex items-center gap-2">
       <LogoMark />
-      <span className="text-[15px] font-semibold tracking-tight">Demopolish</span>
+      <span className="text-[15px] font-semibold tracking-tight">Cleartake</span>
     </div>
   );
 }

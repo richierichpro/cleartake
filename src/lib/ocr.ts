@@ -33,7 +33,7 @@ async function ensureBinary() {
 export async function ocrFrames(video: string, times: number[]): Promise<OcrItem[][]> {
   if (!times.length) return [];
   await ensureBinary();
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "demopolish-ocr-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "cleartake-ocr-"));
   try {
     const files: string[] = [];
     for (const [i, t] of times.entries()) {

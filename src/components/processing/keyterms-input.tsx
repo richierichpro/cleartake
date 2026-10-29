@@ -63,7 +63,7 @@ export function KeytermsInput({ value, onChange }: { value: string[]; onChange: 
           if (e.key === "Backspace" && !draft && value.length) onChange(value.slice(0, -1));
         }}
         onBlur={() => draft.trim() && add(draft)}
-        placeholder={value.length ? "Add another…" : "e.g. Demopolish, Supabase, OAuth"}
+        placeholder={value.length ? "Add another…" : "e.g. Cleartake, Supabase, OAuth"}
         className="h-7 min-w-32 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground"
       />
     </div>

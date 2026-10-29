@@ -1,7 +1,7 @@
 import { ArrowDown, Mic, Sparkles } from "lucide-react";
 import { BACKGROUND_PRESETS } from "@/lib/visuals";
 
-// A still of what Demopolish makes, on a made-up product (not a real project): the recording framed on a
+// A still of what Cleartake makes, on a made-up product (not a real project): the recording framed on a
 // background with a step badge, a zoom on the button you click and a caption, each labelled, plus
 // the voiceover: what you said and what the AI voice says instead. Drawn in HTML so it stays sharp and needs no assets.
 

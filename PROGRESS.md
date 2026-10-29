@@ -1,6 +1,6 @@
 # Progress
 
-Spec: [SPEC.md](SPEC.md). App name: **Demopolish**.
+Spec: [SPEC.md](SPEC.md). App name: **Cleartake**.
 
 ## Status
 - [x] Step 1 – App shell + upload
@@ -223,7 +223,7 @@ data/projects/{id}/                  gitignored
     "size": 2562319
   },
   "thumbnail": "thumb.jpg",        // or null if the browser couldn't decode the video
-  "keyterms": ["Demopolish", "Supabase"],
+  "keyterms": ["Cleartake", "Supabase"],
   "statusDetail": "Listening to your voiceover…",   // live text for the current step
   "stepStartedAt": "2026-10-28T…Z",
   "error": null,                   // or { "step": "transcribing", "message": "…" }

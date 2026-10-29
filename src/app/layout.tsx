@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Demopolish",
-  description: "Turn raw screen recordings into polished product demos.",
+  title: "Cleartake",
+  description: "Turn a raw screen recording into a studio-quality demo video, with an AI voiceover.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
