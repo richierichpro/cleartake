@@ -33,7 +33,7 @@ export default function Home() {
           <div>
             <p className="text-[13px] font-medium text-brand">AI voiceover and editing for product demos</p>
             <h1 className="mt-3 text-[44px] leading-[1.08] font-semibold tracking-[-0.03em] text-balance">
-              Turn a raw recording into a professional demo video
+              Turn a raw recording into a studio-quality demo video
             </h1>
             <p className="mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
               Talk through your screen however it comes out, ums, retakes and all. Demopolish rewrites what you said, re-records it in a
