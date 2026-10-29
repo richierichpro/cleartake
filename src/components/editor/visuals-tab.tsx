@@ -109,7 +109,7 @@ function ScenesSettings({
     );
   }
 
-  function toggle(key: "intro" | "outro", on: boolean) {
+  function toggle(key: "intro" | "outro" | "flyIn", on: boolean) {
     onChange((p) => ({ ...p, scenes: { ...scenesOf(p), [key]: on } }));
     updateProject(project.id, { scenes: { [key]: on } }).catch(() => toast.error("Couldn't save scenes"));
   }
@@ -118,12 +118,19 @@ function ScenesSettings({
     <div className="space-y-4">
       <SceneBox
         title="Intro card"
-        hint={`${OVERLAY_CONFIG.intro}s title card before the video`}
+        hint={`${OVERLAY_CONFIG.intro}s title card before the video${scenes.flyIn ? `, then a ${OVERLAY_CONFIG.flyIn}s fly-in` : ""}`}
         on={scenes.intro}
         onToggle={(on) => toggle("intro", on)}
       >
         <SceneField label="Title" value={d.title} max={m.title} onChange={(title) => finalize.edit((x) => ({ ...x, title }))} />
         <SceneField label="Subtitle" value={d.subtitle} max={m.subtitle} onChange={(subtitle) => finalize.edit((x) => ({ ...x, subtitle }))} />
+        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg bg-[#FAFAFB] px-3 py-2.5">
+          <span>
+            <span className="block text-[13px] font-medium">3D fly-in</span>
+            <span className="block text-xs text-muted-foreground">Your video swoops in, tilted, as the title card leaves</span>
+          </span>
+          <Switch size="sm" checked={scenes.flyIn} onCheckedChange={(on) => toggle("flyIn", on)} />
+        </label>
       </SceneBox>
       <SceneBox
         title="Outro card"

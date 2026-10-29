@@ -35,7 +35,8 @@ const FADE = 8; // frames for scene fades
 
 export function DemoVideo(props: DemoVideoProps) {
   const { frame, overlays, duration } = props;
-  const lead = overlays.intro ? frames(OVERLAY_CONFIG.intro) : 0;
+  const fly = overlays.intro?.flyIn ? frames(OVERLAY_CONFIG.flyIn) : 0;
+  const lead = overlays.intro ? frames(OVERLAY_CONFIG.intro) + fly : 0;
   const main = Math.max(1, frames(duration));
   return (
     <AbsoluteFill style={{ backgroundColor: frame.framed ? "#000" : INK }}>
@@ -47,17 +48,24 @@ export function DemoVideo(props: DemoVideoProps) {
         ))}
       {overlays.intro && (
         <>
-          <Sequence durationInFrames={lead} name="Intro">
-            <SceneCard big={overlays.intro.title} small={overlays.intro.subtitle} fadeOutAt={lead} />
+          <Sequence durationInFrames={lead - fly} name="Intro">
+            <SceneCard big={overlays.intro.title} small={overlays.intro.subtitle} fadeOutAt={lead - fly} />
           </Sequence>
-          {/* The intro card crossfades into the video's first frame. */}
-          <Sequence from={lead - FADE} durationInFrames={FADE} name="Intro → video">
-            <Fade frames={FADE} from={0} to={1}>
-              <Freeze frame={0}>
-                <Main {...props} still />
-              </Freeze>
-            </Fade>
-          </Sequence>
+          {fly ? (
+            // The video's first frame flies in, tilted, with echoes, and lands flat as the video starts.
+            <Sequence from={lead - fly} durationInFrames={fly} name="Fly-in">
+              <FlyIn {...props} length={fly} />
+            </Sequence>
+          ) : (
+            // The intro card crossfades into the video's first frame.
+            <Sequence from={lead - FADE} durationInFrames={FADE} name="Intro → video">
+              <Fade frames={FADE} from={0} to={1}>
+                <Freeze frame={0}>
+                  <Main {...props} still />
+                </Freeze>
+              </Fade>
+            </Sequence>
+          )}
         </>
       )}
       <Sequence from={lead} durationInFrames={main} name="Video">
@@ -83,7 +91,7 @@ export function DemoVideo(props: DemoVideoProps) {
 }
 
 // The edited video: the framed recording (zoomed), captions, badges and callouts, and the voice.
-// `still`: a frozen frame for the scene transitions (no sound).
+// `still`: a frozen frame for the scene transitions (no sound). `bare`: only the framed recording.
 function Main({
   videoSrc,
   pieces,
@@ -94,7 +102,8 @@ function Main({
   captions,
   overlays,
   still = false,
-}: DemoVideoProps & { still?: boolean }) {
+  bare = false,
+}: DemoVideoProps & { still?: boolean; bare?: boolean }) {
   const { width, height } = useVideoConfig();
   const scale = height / 1080; // sizes are defined at 1080p
   const box = recordingBox(frame, width, height);
@@ -118,13 +127,17 @@ function Main({
           </div>
         </div>
       </div>
-      <Captions lines={captions} />
-      {overlays.steps.map((s) => (
-        <StepBadge key={s.id} step={s} />
-      ))}
-      {overlays.callouts.map((c) => (
-        <Callout key={c.id} callout={c} left={box.left} raised={captions.length > 0} />
-      ))}
+      {!bare && (
+        <>
+          <Captions lines={captions} />
+          {overlays.steps.map((s) => (
+            <StepBadge key={s.id} step={s} />
+          ))}
+          {overlays.callouts.map((c) => (
+            <Callout key={c.id} callout={c} left={box.left} raised={captions.length > 0} />
+          ))}
+        </>
+      )}
       {!still &&
         voice.map((v) => (
         <Sequence key={`${v.src}@${v.outputStart}`} from={frames(v.outputStart)} durationInFrames={frames(v.duration) + 1} layout="none">
@@ -286,6 +299,39 @@ function Callout({ callout, left, raised }: { callout: CalloutOverlay; left: num
       <span style={{ width: 6 * s, borderRadius: 3 * s, background: ACCENT }} />
       <span style={{ color: INK, fontSize: 32 * s, fontWeight: 600, letterSpacing: "-0.01em" }}>{callout.text}</span>
     </div>
+  );
+}
+
+// Fly-in (end of the intro): the video's first frame comes up from below, tilted back in 3D, with three
+// fading echoes trailing behind, and lands flat just as the video starts. All layers are frozen frames.
+function FlyIn({ length, ...props }: DemoVideoProps & { length: number }) {
+  const frame = useCurrentFrame();
+  const { fps, height } = useVideoConfig();
+  const s = height / 1080;
+  const appear = interpolate(frame, [0, 6], [0, 1], { extrapolateRight: "clamp" });
+  return (
+    <AbsoluteFill style={{ perspective: 1400 * s, perspectiveOrigin: "50% 100%" }}>
+      {[3, 2, 1, 0].map((k) => {
+        // Echo k lags k × 3 frames, so the copies cascade and then merge into the video.
+        const p = spring({ frame: frame - k * 3, fps, config: { damping: 200 }, durationInFrames: length - 10 });
+        const echo = k > 0;
+        return (
+          <AbsoluteFill
+            key={k}
+            style={{
+              transformOrigin: "50% 100%",
+              transform: `translateY(${(1 - p) * (32 + k * 9)}%) rotateX(${(1 - p) * 38}deg) scale(${0.86 + 0.14 * p})`,
+              opacity: echo ? appear * 0.45 * (1 - p) : appear,
+              filter: echo ? `blur(${(1 - p) * 3 * s}px)` : undefined,
+            }}
+          >
+            <Freeze frame={0}>
+              <Main {...props} still bare />
+            </Freeze>
+          </AbsoluteFill>
+        );
+      })}
+    </AbsoluteFill>
   );
 }
 

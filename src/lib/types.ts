@@ -43,7 +43,7 @@ export interface Project {
   zooms?: { enabled: boolean; items: Zoom[] }; // Step 13; "Add zoom effects" toggles all without deleting
   captions?: { enabled: boolean }; // Step 14; off when missing
   director?: DirectorPlan; // Step 15: the AI edit plan, reviewed and edited by the user
-  scenes?: { intro: boolean; outro: boolean }; // Step 15b, Visuals > Scenes; both on when missing
+  scenes?: { intro: boolean; outro: boolean; flyIn?: boolean }; // Step 15b, Visuals > Scenes; all on when missing
 }
 
 // Step 15: what the AI "director" suggests. Items point at a paragraph (and a phrase in it),

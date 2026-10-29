@@ -9,6 +9,7 @@ import { outputZooms, ZOOM_LIMITS } from "./zooms";
 
 export const OVERLAY_CONFIG = {
   intro: 2, // seconds, before the video
+  flyIn: 1.3, // seconds added to the intro: the video's first frame flies in tilted, with echoes
   outro: 2, // after it
   step: 3, // how long a step badge stays at least, automatically (shorter when the next one is queued behind it)
   stepMinRead: 2, // a step badge stays at least this long before the next one replaces it
@@ -38,7 +39,7 @@ export interface CalloutOverlay {
 }
 
 export interface Overlays {
-  intro: { title: string; subtitle: string } | null;
+  intro: { title: string; subtitle: string; flyIn: boolean } | null;
   outro: { line: string; title: string } | null;
   steps: StepOverlay[];
   callouts: CalloutOverlay[];
@@ -55,7 +56,11 @@ export function itemDuration(kind: "step" | "callout", text: string, duration?: 
   return Math.min(c.autoMax, Math.max(kind === "step" ? c.step : c.callout, read));
 }
 
-export const scenesOf = (p: Project) => ({ intro: p.scenes?.intro ?? true, outro: p.scenes?.outro ?? true });
+export const scenesOf = (p: Project) => ({
+  intro: p.scenes?.intro ?? true,
+  outro: p.scenes?.outro ?? true,
+  flyIn: p.scenes?.flyIn ?? true,
+});
 
 type Window = [number, number];
 const overlaps = (busy: Window[], [a, b]: Window) => busy.some(([s, e]) => a < e && s < b);
@@ -160,7 +165,7 @@ export function buildOverlays(project: Project, plan: SyncPlan, words: Transcrip
   for (const [id, p] of Object.entries(places)) if (p.note && placed[id] !== p) placed[id] = { ...placed[id], note: [p.note, placed[id].note].filter(Boolean).join(" · ") };
 
   return {
-    intro: scenes.intro && d.title ? { title: d.title, subtitle: d.subtitle } : null,
+    intro: scenes.intro && d.title ? { title: d.title, subtitle: d.subtitle, flyIn: scenes.flyIn } : null,
     outro: scenes.outro && d.outro ? { line: d.outro, title: d.title } : null,
     steps,
     callouts,
@@ -171,7 +176,7 @@ export function buildOverlays(project: Project, plan: SyncPlan, words: Transcrip
 
 /** Seconds of intro before output time 0 and of outro after the video. */
 export const sceneLengths = (o: Pick<Overlays, "intro" | "outro">) => ({
-  lead: o.intro ? OVERLAY_CONFIG.intro : 0,
+  lead: o.intro ? OVERLAY_CONFIG.intro + (o.intro.flyIn ? OVERLAY_CONFIG.flyIn : 0) : 0,
   tail: o.outro ? OVERLAY_CONFIG.outro : 0,
 });
 

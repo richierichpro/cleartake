@@ -39,7 +39,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     zooms?: { enabled?: unknown; items?: unknown };
     captions?: { enabled?: unknown };
     director?: unknown;
-    scenes?: { intro?: unknown; outro?: unknown };
+    scenes?: { intro?: unknown; outro?: unknown; flyIn?: unknown };
   };
   const project = await mutateProject(id, (p) => {
     if (typeof body.title === "string" && body.title.trim()) p.title = body.title.trim().slice(0, 120);
@@ -50,9 +50,10 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/projects/[id]"
     // The user's edits to the AI plan replace its content; when and how it was made stays.
     if (body.director && p.director) p.director = { ...p.director, ...cleanPlan(body.director) };
     if (body.scenes) {
-      const cur = { intro: p.scenes?.intro ?? true, outro: p.scenes?.outro ?? true };
+      const cur = { intro: p.scenes?.intro ?? true, outro: p.scenes?.outro ?? true, flyIn: p.scenes?.flyIn ?? true };
       if (typeof body.scenes.intro === "boolean") cur.intro = body.scenes.intro;
       if (typeof body.scenes.outro === "boolean") cur.outro = body.scenes.outro;
+      if (typeof body.scenes.flyIn === "boolean") cur.flyIn = body.scenes.flyIn;
       p.scenes = cur;
     }
     if (body.voice) {
