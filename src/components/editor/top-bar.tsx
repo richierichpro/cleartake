@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bug, Check, Loader2, Redo2, Sparkles, Undo2 } from "lucide-react";
+import { ArrowLeft, Bug, Check, Loader2, Play, Redo2, Sparkles, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,6 +19,7 @@ interface Props {
   debugOpen: boolean;
   onToggleDebug: () => void;
   history: History;
+  onPreview: () => void;
   finalizeOpen: boolean;
   finalizing: boolean;
   onFinalize: () => void;
@@ -31,6 +32,7 @@ export function TopBar({
   debugOpen,
   onToggleDebug,
   history,
+  onPreview,
   finalizeOpen,
   finalizing,
   onFinalize,
@@ -124,6 +126,12 @@ export function TopBar({
           {finalizing ? <Loader2 className="animate-spin" /> : <Sparkles className="text-brand" />}
           Finalize
         </Button>
+        <Tooltip>
+          <TooltipTrigger render={<Button variant="outline" onClick={onPreview} className="gap-1.5" />}>
+            <Play className="fill-current" /> Preview
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Watch the finished video from the start, full screen</TooltipContent>
+        </Tooltip>
         <ExportButton project={project} duration={duration} />
       </div>
     </header>

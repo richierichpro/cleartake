@@ -30,6 +30,7 @@ import { useZooms } from "./use-zooms";
 import { ZoomsTab } from "./zooms-tab";
 import { useZoomDetection } from "./use-zoom-detection";
 import { FinalizePanel } from "./finalize-panel";
+import { PreviewModal } from "./preview-modal";
 import { outdatedVoices, useFinalize } from "./use-finalize";
 import { scriptKey } from "@/lib/director";
 import { buildOverlays, sceneLengths } from "@/lib/overlays";
@@ -153,8 +154,16 @@ function EditorLoaded({ project, onChange, history }: { project: Project; onChan
   const { split, cutSelection, setSelection } = edits;
   const { selectedId: selectedZoom, remove: removeZoom, select: selectZoom } = zooms;
   const { undo, redo } = history;
+  // Full-screen preview of the finished video. The editor's shortcuts pause while it's open.
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const { playing: editorPlaying } = playback;
+  const openPreview = useCallback(() => {
+    if (editorPlaying) toggle();
+    setPreviewOpen(true);
+  }, [editorPlaying, toggle]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (previewOpen) return;
       const el = e.target as HTMLElement;
       // ⌘Z / ⇧⌘Z (Ctrl on Windows): undo / redo the edit. In a text field, the field's own undo works on the text.
       if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z" || e.key === "y")) {
@@ -179,12 +188,13 @@ function EditorLoaded({ project, onChange, history }: { project: Project; onChan
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, split, cutSelection, setSelection, selectedZoom, removeZoom, selectZoom, undo, redo]);
+  }, [toggle, split, cutSelection, setSelection, selectedZoom, removeZoom, selectZoom, undo, redo, previewOpen]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-white">
       <TopBar project={project} onChange={onChange} debugOpen={debugOpen} onToggleDebug={() => setDrawer((o) => (o === "debug" ? null : "debug"))}
         history={history}
+        onPreview={openPreview}
         finalizeOpen={drawer === "finalize"}
         finalizing={finalize.running}
         onFinalize={() => (drawer === "finalize" ? setDrawer(null) : openFinalize())}
@@ -262,6 +272,18 @@ function EditorLoaded({ project, onChange, history }: { project: Project; onChan
           />
         </main>
       </div>
+      <AnimatePresence>
+        {previewOpen && (
+          <PreviewModal
+            project={project}
+            plan={plan}
+            zooms={outputZooms(project, plan)} // every zoom (none left out for aiming)
+            captions={captionsEnabled && !captionsHint ? captionLines : []}
+            overlays={overlays}
+            onClose={() => setPreviewOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

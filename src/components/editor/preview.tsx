@@ -1,23 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Player } from "@remotion/player";
 import { AnimatePresence, motion } from "framer-motion";
 import { Play, Sparkles, TriangleAlert } from "lucide-react";
-import { mediaUrl } from "@/lib/client";
 import { cn } from "@/lib/utils";
 import { isSegmentRemoved } from "@/lib/edits";
 import { clipStatus, voiceOf } from "@/lib/voice-settings";
-import { frameProps, recordingBox } from "@/lib/visuals";
+import { recordingBox } from "@/lib/visuals";
 import type { CaptionLine } from "@/lib/captions";
-import { drawnOverlays, sceneLengths, type Overlays } from "@/lib/overlays";
+import type { Overlays } from "@/lib/overlays";
 import type { ZoomCandidate } from "@/lib/zoom-detect";
 import { zoomWindow, type OutputZoom } from "@/lib/zooms";
 import type { Zoom } from "@/lib/types";
 import type { SyncPlan } from "@/lib/sync";
 import type { Project } from "@/lib/types";
-import { compositionSize, DemoVideo, FPS, type DemoVideoProps } from "@/remotion/demo-video";
+import { DemoVideo, FPS } from "@/remotion/demo-video";
 import type { Playback } from "./use-playback";
+import { useVideoProps } from "./use-video-props";
 
 const PADDING = 48;
 
@@ -43,12 +43,8 @@ export function Preview({
   const { attachPlayer, playing, toggle } = playback;
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const frame = frameProps(project, (file) => mediaUrl(project.id, file));
-  const frameKey = JSON.stringify(frame); // stable key so the Player only re-renders when the frame changes
-  const zoomsKey = JSON.stringify(zooms);
-  const captionsKey = JSON.stringify(captions);
-  const overlaysKey = JSON.stringify(drawnOverlays(overlays));
-  const comp = compositionSize(project.video.width, project.video.height, "1080p", frame.framed);
+  const { inputProps, durationInFrames, size: comp } = useVideoProps(project, plan, zooms, captions, overlays);
+  const frame = inputProps.frame;
   const aspect = comp.width / comp.height;
 
   // Fit the frame inside the canvas while keeping the video's aspect ratio.
@@ -66,28 +62,12 @@ export function Preview({
   }, [aspect]);
 
   const v = voiceOf(project);
-  const inputProps: DemoVideoProps = useMemo(
-    () => ({
-      videoSrc: mediaUrl(project.id, project.video.file),
-      pieces: plan.pieces,
-      voice: plan.voice.map((x) => ({ src: mediaUrl(project.id, x.file), outputStart: x.outputStart, duration: x.duration })),
-      muteOriginal: v.mode === "ai",
-      frame: JSON.parse(frameKey),
-      zooms: JSON.parse(zoomsKey),
-      captions: JSON.parse(captionsKey),
-      overlays: JSON.parse(overlaysKey),
-      duration: plan.outputDuration,
-    }),
-    [project.id, project.video.file, plan, v.mode, frameKey, zoomsKey, captionsKey, overlaysKey],
-  );
 
   // Paragraphs that will play silently because their AI voice is missing or outdated.
   const missingVoice =
     v.mode === "ai" ? (project.segments ?? []).filter(
           (s) => ["none", "outdated"].includes(clipStatus(s, v)) && !isSegmentRemoved(project, s),
         ).length : 0;
-  const { lead, tail } = sceneLengths(overlays);
-  const durationInFrames = Math.max(1, Math.round((lead + plan.outputDuration + tail) * FPS));
 
   return (
     <div ref={containerRef} className="dot-grid relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
@@ -132,7 +112,7 @@ export function Preview({
           {/* Debug: detected change regions, drawn over the recording area */}
           {debugBoxes.length > 0 &&
             (() => {
-              const rec = recordingBox(JSON.parse(frameKey), size.w, size.h);
+              const rec = recordingBox(frame, size.w, size.h);
               return debugBoxes.map((z) => (
                 <div
                   key={z.id}
@@ -159,7 +139,7 @@ export function Preview({
           {/* Aiming a selected zoom: full frame, dashed window of what the zoom shows, click to move the focus */}
           {aim &&
             (() => {
-              const rec = recordingBox(JSON.parse(frameKey), size.w, size.h);
+              const rec = recordingBox(frame, size.w, size.h);
               const win = zoomWindow(aim.zoom.x, aim.zoom.y, aim.zoom.scale);
               return (
                 <div
