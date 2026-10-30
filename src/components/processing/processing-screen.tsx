@@ -69,7 +69,7 @@ export function ProcessingScreen({ id }: { id: string }) {
 
   useEffect(() => {
     if (project?.status !== "ready" || project.statusDetail?.startsWith("No speech")) return;
-    const t = setTimeout(() => router.push(`/projects/${id}/result`), 1400);
+    const t = setTimeout(() => router.push(`/projects/${id}`), 1400);
     return () => clearTimeout(t);
   }, [project?.status, project?.statusDetail, id, router]);
 
@@ -140,7 +140,7 @@ export function ProcessingScreen({ id }: { id: string }) {
                             : step.id === "ready" && state === "done"
                               ? project.statusDetail?.startsWith("No speech")
                                 ? project.statusDetail
-                                : "Opening your video…"
+                                : "Opening the editor…"
                               : undefined
                       }
                       elapsed={state === "active" ? elapsed : undefined}

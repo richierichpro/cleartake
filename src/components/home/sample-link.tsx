@@ -24,7 +24,7 @@ export function SampleLink() {
     setOpening(true);
     try {
       const project = await openSample();
-      router.push(`/projects/${project.id}/result`);
+      router.push(`/projects/${project.id}`);
     } catch (err) {
       setOpening(false);
       toast.error("Couldn't open the sample", { description: err instanceof Error ? err.message : undefined });
