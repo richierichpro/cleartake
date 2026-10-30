@@ -12,6 +12,10 @@ export const ZOOM_LIMITS = {
   defaultLength: 3, // a zoom added by hand
   minLength: 1,
   ease: 0.7, // seconds to spring in, and to spring out
+  // Subtle zooms on clicks (a part of the screen changed): a little closer, briefly.
+  subtleScale: 1.3,
+  subtleLength: 2, // seconds of the edited video
+  subtleLead: 0.4, // start this long before the change, so the zoom arrives with the click
 };
 
 export const zoomsOf = (p: Project) => ({ enabled: p.zooms?.enabled ?? true, items: p.zooms?.items ?? [] });
@@ -63,14 +67,22 @@ export function fitsBetween(zooms: { id: string; start: number; end: number }[],
  * Zooms from the Step 12 suggestions, keeping the gap rule against `taken` (output seconds).
  * Sped-up paragraphs compress source time, so each zoom keeps at least defaultLength of the edited video.
  */
-export function zoomsFromSuggestions(candidates: ZoomCandidate[], plan: SyncPlan, taken: { id: string; start: number; end: number }[] = []) {
+export function zoomsFromSuggestions(
+  candidates: (ZoomCandidate & { reason?: string })[],
+  plan: SyncPlan,
+  taken: { id: string; start: number; end: number }[] = [],
+) {
   const used = [...taken];
   const added: Zoom[] = [];
   for (const c of candidates) {
-    const z = zoomFromSuggestion(c);
+    const subtle = c.reason === "click";
+    const z = subtle
+      ? { ...zoomFromSuggestion(c), start: Math.max(0, c.start - ZOOM_LIMITS.subtleLead), scale: ZOOM_LIMITS.subtleScale }
+      : zoomFromSuggestion(c);
+    const length = subtle ? ZOOM_LIMITS.subtleLength : ZOOM_LIMITS.defaultLength;
     const out = { id: z.id, start: sourceToOutput(plan, z.start), end: sourceToOutput(plan, z.end) };
-    if (out.end - out.start < ZOOM_LIMITS.defaultLength) {
-      out.end = Math.min(plan.outputDuration, out.start + ZOOM_LIMITS.defaultLength);
+    if (out.end - out.start < length) {
+      out.end = Math.min(plan.outputDuration, out.start + length);
       z.end = outputToSource(plan, out.end);
     }
     if (out.end - out.start < 0.5 || !fitsBetween(used, out.start, out.end)) continue;

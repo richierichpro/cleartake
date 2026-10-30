@@ -18,10 +18,11 @@ export const ZOOM_SUGGEST_CONFIG = {
   minMatch: 0.6, // how closely on-screen text must match the phrase (0–1)
   typingMinLength: 1, // a small region changing this long (s) counts as typing
   typingMaxArea: 0.08, // …if it covers at most this share of the screen
+  clickMaxArea: 0.25, // any other change up to this share of the screen (a button press, a menu opening) = a click: a subtle zoom
 };
 
 export interface ZoomSuggestion extends ZoomCandidate {
-  reason: "narration" | "typing";
+  reason: "narration" | "typing" | "click";
   phrase?: string; // what you said
   ocrText?: string; // what it matched on screen
   confirmedByChange?: boolean; // the screen also changed there
@@ -159,10 +160,13 @@ export async function suggestZooms(projectId: string): Promise<ZoomSuggestions> 
     });
   });
 
-  // 3. Backup: typing (a small region changing for a while), when nothing is said about it.
+  // 3. Backup: typing (a small region changing for a while), then clicks (any other change in part of
+  // the screen: a recording has no click data, but a button press or a menu opening shows up as one).
   for (const z of changes) {
     if (z.end - z.start >= c.typingMinLength && z.w * z.h <= c.typingMaxArea) {
       found.push({ ...z, id: `t${z.id}`, reason: "typing", score: 0.5 });
+    } else if (z.w * z.h <= c.clickMaxArea) {
+      found.push({ ...z, id: `c${z.id}`, reason: "click", score: 0.3 });
     }
   }
 

@@ -455,7 +455,9 @@ function ZoomDebug({ zoom, plan, playback }: { zoom: ZoomDetectionState; plan: S
                             {z.confirmedByChange && <span className="text-muted-foreground"> · screen changed there</span>}
                           </>
                         ) : (
-                          <span className="text-muted-foreground">Typing in a field</span>
+                          <span className="text-muted-foreground">
+                            {z.reason === "typing" ? "Typing in a field" : "Click: part of the screen changed (subtle zoom)"}
+                          </span>
                         )}
                       </td>
                       <td className="py-1.5 whitespace-nowrap">{Math.round(z.w * z.h * 100 * 10) / 10}%</td>
