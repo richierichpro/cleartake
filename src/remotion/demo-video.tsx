@@ -32,6 +32,8 @@ const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-ser
 const ACCENT = "#FF5C35";
 const INK = "#111113";
 const FADE = 8; // frames for scene fades
+// Mount scenes this early (hidden), so their videos are loaded when they appear: no blank flash.
+const PREMOUNT = 2 * FPS;
 
 export function DemoVideo(props: DemoVideoProps) {
   const { frame, overlays, duration } = props;
@@ -53,12 +55,12 @@ export function DemoVideo(props: DemoVideoProps) {
           </Sequence>
           {fly ? (
             // The video's first frame flies in, tilted, with echoes, and lands flat as the video starts.
-            <Sequence from={lead - fly} durationInFrames={fly} name="Fly-in">
+            <Sequence from={lead - fly} durationInFrames={fly} name="Fly-in" premountFor={PREMOUNT}>
               <FlyIn {...props} length={fly} />
             </Sequence>
           ) : (
             // The intro card crossfades into the video's first frame.
-            <Sequence from={lead - FADE} durationInFrames={FADE} name="Intro → video">
+            <Sequence from={lead - FADE} durationInFrames={FADE} name="Intro → video" premountFor={PREMOUNT}>
               <Fade frames={FADE} from={0} to={1}>
                 <Freeze frame={0}>
                   <Main {...props} still />
@@ -68,13 +70,13 @@ export function DemoVideo(props: DemoVideoProps) {
           )}
         </>
       )}
-      <Sequence from={lead} durationInFrames={main} name="Video">
+      <Sequence from={lead} durationInFrames={main} name="Video" premountFor={PREMOUNT}>
         <Main {...props} />
       </Sequence>
       {overlays.outro && (
         <>
           {/* The video's last frame fades out under the outro card. */}
-          <Sequence from={lead + main} durationInFrames={FADE} name="Video → outro">
+          <Sequence from={lead + main} durationInFrames={FADE} name="Video → outro" premountFor={PREMOUNT}>
             <Fade frames={FADE} from={1} to={0}>
               <Freeze frame={main - 1}>
                 <Main {...props} still />
