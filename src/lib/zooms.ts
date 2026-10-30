@@ -9,12 +9,12 @@ export const ZOOM_LIMITS = {
   maxScale: 2.5,
   defaultScale: 1.6,
   minGap: 3, // spec: no zooms closer than this (output seconds)
-  defaultLength: 3, // a zoom added by hand
+  defaultLength: 1.8, // a zoom added by hand, and the shortest automatic one (edited video)
   minLength: 1,
-  ease: 0.7, // seconds to spring in, and to spring out
+  ease: 0.5, // seconds to spring in, and to spring out
   // Subtle zooms on clicks (a part of the screen changed): a little closer, briefly.
   subtleScale: 1.3,
-  subtleLength: 2, // seconds of the edited video
+  subtleLength: 1.2, // seconds of the edited video
   subtleLead: 0.4, // start this long before the change, so the zoom arrives with the click
 };
 
