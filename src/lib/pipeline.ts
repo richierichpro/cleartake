@@ -6,6 +6,10 @@ import { buildSegments } from "./segments";
 import { analyzeActivity } from "./motion";
 import { generateSegmentVoice } from "./voice";
 import { clipStatus, voiceOf } from "./voice-settings";
+import { runDirector } from "./director-ai";
+import { loadSyncPlan } from "./sync-server";
+import { suggestZooms } from "./zoom-suggest";
+import { outputZooms, zoomsFromSuggestions } from "./zooms";
 import type { ProjectStatus, Transcript } from "./types";
 
 // Processing runs in the background inside the Next server process.
@@ -100,6 +104,14 @@ async function runPipeline(id: string) {
       }
     }
 
+    // The finishing touches, so the result is ready to watch without a click: zooms on what you name,
+    // captions, title cards and step labels. Each is skipped if it's already there (a retry never
+    // overwrites your edits), and a failure only means doing it in the editor.
+    if (words && voiced) {
+      step = "polishing";
+      await polish(id).catch(() => {});
+    }
+
     step = "ready";
     await setStatus(
       id,
@@ -108,7 +120,9 @@ async function runPipeline(id: string) {
         ? "No speech found. You can write the narration in the editor and an AI voice will read it."
         : voiceProblem
           ? `Script ready. The AI voice will be generated in the editor (${voiceProblem})`
-          : `Transcribed ${words} words, polished the script${voiced ? " and recorded the AI voice" : ""}`,
+          : voiced
+            ? `Transcribed ${words} words, rewrote the script, recorded the AI voice and added the finishing touches`
+            : `Transcribed ${words} words and polished the script`,
     );
   } catch (err) {
     await mutateProject(id, (p) => {
@@ -116,4 +130,28 @@ async function runPipeline(id: string) {
       p.error = { step, message: err instanceof Error ? err.message : String(err) };
     }).catch(() => {});
   }
+}
+
+async function polish(id: string) {
+  await setStatus(id, "polishing", "Finding what to zoom in on…");
+  const project = (await readProject(id))!;
+  if (!project.zooms?.items.length) {
+    try {
+      const suggestions = await suggestZooms(id);
+      await writeJson(id, "zoom-suggestions.json", suggestions);
+      const { plan } = await loadSyncPlan(project);
+      const added = zoomsFromSuggestions(suggestions.candidates, plan, outputZooms(project, plan));
+      if (added.length) await mutateProject(id, (p) => void (p.zooms = { enabled: true, items: added }));
+    } catch {
+      // No zooms: they can be added in the editor.
+    }
+  }
+
+  await setStatus(id, "polishing", "Writing the title card and step labels…");
+  if (!project.director) await runDirector(id).catch(() => {});
+
+  // Captions follow the AI voice; on unless you turned them off.
+  await mutateProject(id, (p) => {
+    if (!p.captions && voiceOf(p).mode === "ai") p.captions = { enabled: true };
+  });
 }

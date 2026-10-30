@@ -8,7 +8,7 @@ import { BACKGROUND_PRESETS, PADDING_MAX, RADIUS_MAX, SHADOWS, visualsOf } from 
 import { ZOOM_LIMITS } from "@/lib/zooms";
 import type { Cut, Project, Visuals, VoiceSettings, Zoom } from "@/lib/types";
 
-const ACTIVE = ["transcribing", "writing", "voicing"];
+const ACTIVE = ["transcribing", "writing", "voicing", "polishing"];
 
 export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]">) {
   const { id } = await ctx.params;

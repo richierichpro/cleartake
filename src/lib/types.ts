@@ -7,6 +7,7 @@ export type ProjectStatus =
   | "transcribing"
   | "writing"
   | "voicing"
+  | "polishing" // zooms, captions, title cards and step labels (automatic finishing touches)
   | "ready"
   | "error";
 

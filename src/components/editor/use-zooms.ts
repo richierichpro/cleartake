@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { fetchZoomCandidates, updateProject } from "@/lib/client";
 import { outputToSource, sourceToOutput, type SyncPlan } from "@/lib/sync";
-import { fitsBetween, newZoomId, ZOOM_LIMITS, zoomFromSuggestion, zoomsOf } from "@/lib/zooms";
+import { fitsBetween, newZoomId, ZOOM_LIMITS, zoomsFromSuggestions, zoomsOf } from "@/lib/zooms";
 import type { Project, Zoom } from "@/lib/types";
 import type { ProjectUpdate } from "./editor";
 
@@ -99,20 +99,7 @@ export function useZooms(
     setDetecting(true);
     try {
       const { candidates } = await fetchZoomCandidates(project.id);
-      const added: Zoom[] = [];
-      const taken = [...asOutput];
-      for (const c of candidates) {
-        const z = zoomFromSuggestion(c);
-        const out = { id: z.id, start: sourceToOutput(plan, z.start), end: sourceToOutput(plan, z.end) };
-        // Sped-up paragraphs compress source time: keep at least defaultLength in the edited video.
-        if (out.end - out.start < ZOOM_LIMITS.defaultLength) {
-          out.end = Math.min(plan.outputDuration, out.start + ZOOM_LIMITS.defaultLength);
-          z.end = outputToSource(plan, out.end);
-        }
-        if (out.end - out.start < 0.5 || !fitsBetween(taken, out.start, out.end)) continue;
-        taken.push(out);
-        added.push(z);
-      }
+      const added = zoomsFromSuggestions(candidates, plan, asOutput);
       if (!added.length) {
         toast("No new zooms found", {
           description: candidates.length

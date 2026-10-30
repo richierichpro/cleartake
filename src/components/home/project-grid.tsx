@@ -25,6 +25,7 @@ const STATUS_LABEL: Record<Project["status"], string> = {
   transcribing: "Transcribing…",
   writing: "Writing script…",
   voicing: "Generating voice…",
+  polishing: "Adding finishing touches…",
   ready: "Ready",
   error: "Processing failed",
 };

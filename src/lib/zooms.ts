@@ -1,4 +1,4 @@
-import { sourceToOutput, type SyncPlan } from "./sync";
+import { outputToSource, sourceToOutput, type SyncPlan } from "./sync";
 import type { Project, Zoom } from "./types";
 import type { ZoomCandidate } from "./zoom-detect";
 
@@ -58,3 +58,24 @@ export function fitsBetween(zooms: { id: string; start: number; end: number }[],
   return zooms.every((z) => z.id === ignore || end + ZOOM_LIMITS.minGap <= z.start || start >= z.end + ZOOM_LIMITS.minGap);
 }
 
+
+/**
+ * Zooms from the Step 12 suggestions, keeping the gap rule against `taken` (output seconds).
+ * Sped-up paragraphs compress source time, so each zoom keeps at least defaultLength of the edited video.
+ */
+export function zoomsFromSuggestions(candidates: ZoomCandidate[], plan: SyncPlan, taken: { id: string; start: number; end: number }[] = []) {
+  const used = [...taken];
+  const added: Zoom[] = [];
+  for (const c of candidates) {
+    const z = zoomFromSuggestion(c);
+    const out = { id: z.id, start: sourceToOutput(plan, z.start), end: sourceToOutput(plan, z.end) };
+    if (out.end - out.start < ZOOM_LIMITS.defaultLength) {
+      out.end = Math.min(plan.outputDuration, out.start + ZOOM_LIMITS.defaultLength);
+      z.end = outputToSource(plan, out.end);
+    }
+    if (out.end - out.start < 0.5 || !fitsBetween(used, out.start, out.end)) continue;
+    used.push(out);
+    added.push(z);
+  }
+  return added;
+}

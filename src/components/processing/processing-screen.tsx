@@ -22,6 +22,7 @@ const STEPS: { id: ProjectStatus | "uploading"; label: string }[] = [
   { id: "transcribing", label: "Transcribing" },
   { id: "writing", label: "Writing script" },
   { id: "voicing", label: "Recording AI voice" },
+  { id: "polishing", label: "Adding zooms, captions and titles" },
   { id: "ready", label: "Ready" },
 ];
 const ORDER = STEPS.map((s) => s.id);
@@ -68,7 +69,7 @@ export function ProcessingScreen({ id }: { id: string }) {
 
   useEffect(() => {
     if (project?.status !== "ready" || project.statusDetail?.startsWith("No speech")) return;
-    const t = setTimeout(() => router.push(`/projects/${id}`), 1400);
+    const t = setTimeout(() => router.push(`/projects/${id}/result`), 1400);
     return () => clearTimeout(t);
   }, [project?.status, project?.statusDetail, id, router]);
 
@@ -139,7 +140,7 @@ export function ProcessingScreen({ id }: { id: string }) {
                             : step.id === "ready" && state === "done"
                               ? project.statusDetail?.startsWith("No speech")
                                 ? project.statusDetail
-                                : "Opening the editor…"
+                                : "Opening your video…"
                               : undefined
                       }
                       elapsed={state === "active" ? elapsed : undefined}
