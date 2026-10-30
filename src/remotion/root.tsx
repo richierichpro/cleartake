@@ -31,6 +31,7 @@ export function RemotionRoot() {
         captions: [],
         overlays: { intro: null, outro: null, steps: [], callouts: [], crossfades: [] },
         duration: 1 / 30,
+        music: null,
         width: 1920,
         height: 1080,
         durationInFrames: 1,

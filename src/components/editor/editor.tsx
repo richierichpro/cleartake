@@ -28,6 +28,7 @@ import { useSyncPlan } from "./use-sync-plan";
 import { useEdits } from "./use-edits";
 import { useZooms } from "./use-zooms";
 import { ZoomsTab } from "./zooms-tab";
+import { MusicTab } from "./music-tab";
 import { useZoomDetection } from "./use-zoom-detection";
 import { FinalizePanel } from "./finalize-panel";
 import { PreviewModal } from "./preview-modal";
@@ -208,6 +209,7 @@ function EditorLoaded({ project, onChange, history }: { project: Project; onChan
             script: <ScriptView project={project} plan={plan} playback={playback} onChange={onChange} />,
             visuals: <VisualsTab project={project} onChange={onChange} finalize={finalize} onFinalize={openFinalize} />,
             zooms: <ZoomsTab zooms={zooms} />,
+            music: <MusicTab project={project} onChange={onChange} />,
             voice: (
               <VoiceTab project={project} onChange={onChange} volume={playback.muted ? 0 : playback.volume} />
             ),

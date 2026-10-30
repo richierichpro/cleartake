@@ -13,7 +13,7 @@ Spec: [SPEC.md](SPEC.md). App name: **Cleartake**.
 - [x] Step 8 – Export + download
 - [x] Step 9 – Trim and cut
 - [x] Step 10 – Visuals tab (Background)
-- [–] Step 11 – Music tab: skipped by decision (not important for the hackathon). Voice loudness normalization skipped with it; revisit only if mixing original + AI voice or adding music.
+- [x] Step 11 – Music tab (built Oct 31 with ElevenLabs Music; voice loudness normalization still skipped)
 - [x] Step 12 – Zoom detection (debug only)
 - [x] Step 13 – Zooms tab
 - [x] Step 14 – Captions
@@ -106,6 +106,7 @@ LLM_MODEL=gemma-4-31b    # optional; this account only has gemma-4-31b and qwen3
 - Click zooms: a recording has no click data, so a screen change in part of the screen (≤ 25%, not typing) counts as a click → a subtle zoom (1.3×, 1.2s, starting 0.4s before the change). Narration zooms keep priority; the 3s gap rule applies. Zoom lengths were shortened: narration zooms hold 1.2s after the phrase, the shortest automatic or hand-added zoom is 1.8s, and the easing is 0.5s (was 2.5s / 3s / 0.7s).
 - Click zooms aim at the mouse pointer (`lib/pointer.ts`): for each kept click, 2.5s of frames before the change at 640px / 10 fps; consecutive-frame diffs give pointer-sized blobs; the last move before the click is where the pointer rested (blobs already present in the previous move = where it came from, dropped; ties → closest to what changed). Fallback: the centre of the change. Milo: chips and "Plan our trip" found correctly (the old box-centre pointed at the middle of the left panel). Debug shows "on the mouse pointer". Scene sequences are premounted 2s early, so the video is loaded when the fly-in lands (no blank flash).
 - After processing, the app opens the editor again (the user edits first); the result page still exists at /projects/[id]/result.
+- Music (Step 11): never automatic. The Music tab offers 5 moods made for product demos (`MUSIC_PRESETS`: Upbeat tech, Calm and focused, Corporate inspiring, Lo-fi chill, Minimal electronic); picking one composes an instrumental track with ElevenLabs Music (`lib/music-ai.ts`: POST /v1/music, `music_v1`, `force_instrumental`, length = intro + video + outro + 1s, cached as `music-{mood}-{N}s.mp3`) → `project.music = { enabled, preset, file, volume }` (undoable). The composition plays it under everything with `musicVolume()`: fade in 1s / out 2s, and ducks to 35% while the AI voice speaks (0.4s ramps). The API key needs the **Music Generation** permission (the current key lacks it, and has its own 2,000-credit quota).
 - Toasts are top-right under the top bar so they never cover the timeline.
 - Debug drawer: bug button in the top bar. It covers only the preview area so the control bar and timeline stay usable.
 - AssemblyAI calls: `POST /v2/upload` (raw bytes) → `POST /v2/transcript {audio_url, language_code: "en", keyterms_prompt}` → poll `GET /v2/transcript/{id}`. Uses the default speech models (Universal-3.5 Pro, then Universal-2). Each key term is at most 6 words.

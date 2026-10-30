@@ -8,6 +8,7 @@ import type { SyncPlan } from "@/lib/sync";
 import type { Project } from "@/lib/types";
 import { frameProps } from "@/lib/visuals";
 import { voiceOf } from "@/lib/voice-settings";
+import { musicOf } from "@/lib/music";
 import type { OutputZoom } from "@/lib/zooms";
 import { compositionSize, FPS, type DemoVideoProps } from "@/remotion/demo-video";
 
@@ -20,6 +21,7 @@ export function useVideoProps(project: Project, plan: SyncPlan, zooms: OutputZoo
   const captionsKey = JSON.stringify(captions);
   const overlaysKey = JSON.stringify(drawnOverlays(overlays));
   const mode = voiceOf(project).mode;
+  const musicKey = JSON.stringify(musicOf(project, (file) => mediaUrl(project.id, file)));
   const { lead, tail } = sceneLengths(overlays);
   const durationInFrames = Math.max(1, Math.round((lead + plan.outputDuration + tail) * FPS));
   const size = compositionSize(project.video.width, project.video.height, "1080p", frame.framed);
@@ -35,8 +37,9 @@ export function useVideoProps(project: Project, plan: SyncPlan, zooms: OutputZoo
       captions: JSON.parse(captionsKey),
       overlays: JSON.parse(overlaysKey),
       duration: plan.outputDuration,
+      music: JSON.parse(musicKey),
     }),
-    [project.id, project.video.file, plan, mode, frameKey, zoomsKey, captionsKey, overlaysKey],
+    [project.id, project.video.file, plan, mode, frameKey, zoomsKey, captionsKey, overlaysKey, musicKey],
   );
   return { inputProps, durationInFrames, size };
 }

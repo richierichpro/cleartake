@@ -3,6 +3,7 @@ import { AbsoluteFill, Freeze, Img, interpolate, Sequence, spring, useCurrentFra
 import { Audio, Video } from "@remotion/media";
 import type { CaptionLine } from "@/lib/captions";
 import { OVERLAY_CONFIG, type CalloutOverlay, type Overlays, type StepOverlay } from "@/lib/overlays";
+import { musicVolume } from "@/lib/music";
 import { pieceLength, type TimelinePiece } from "@/lib/sync";
 import { recordingBox, SHADOWS, type FrameProps } from "@/lib/visuals";
 import { ZOOM_LIMITS, zoomWindow, type OutputZoom } from "@/lib/zooms";
@@ -24,6 +25,7 @@ export type DemoVideoProps = {
   captions: CaptionLine[]; // output seconds, empty when captions are off (Step 14)
   overlays: Omit<Overlays, "placed">; // intro/outro, step badges, callouts, crossfades (Step 15b)
   duration: number; // output seconds of the edited video (without intro/outro)
+  music: { src: string; volume: number } | null; // Music tab: one track under everything, ducked under the voice
 };
 
 const frames = (seconds: number) => Math.round(seconds * FPS);
@@ -48,6 +50,7 @@ export function DemoVideo(props: DemoVideoProps) {
         ) : (
           <AbsoluteFill style={{ background: frame.background }} />
         ))}
+      {props.music && <Music music={props.music} voice={props.voice} lead={lead} total={lead + main + (overlays.outro ? frames(OVERLAY_CONFIG.outro) : 0)} />}
       {overlays.intro && (
         <>
           <Sequence durationInFrames={lead - fly} name="Intro">
@@ -302,6 +305,23 @@ function Callout({ callout, left, raised }: { callout: CalloutOverlay; left: num
       <span style={{ color: INK, fontSize: 32 * s, fontWeight: 600, letterSpacing: "-0.01em" }}>{callout.text}</span>
     </div>
   );
+}
+
+// Background music under everything: fades in and out, and dips while the AI voice speaks.
+function Music({
+  music,
+  voice,
+  lead,
+  total,
+}: {
+  music: NonNullable<DemoVideoProps["music"]>;
+  voice: DemoVideoProps["voice"];
+  lead: number;
+  total: number;
+}) {
+  const { fps } = useVideoConfig();
+  const spoken = voice.map((v) => ({ start: lead + frames(v.outputStart), end: lead + frames(v.outputStart + v.duration) }));
+  return <Audio src={music.src} volume={(f) => musicVolume(f, fps, music.volume, spoken, total)} />;
 }
 
 // Fly-in (end of the intro): the video's first frame comes up from below, tilted back in 3D, with three

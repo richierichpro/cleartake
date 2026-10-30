@@ -8,6 +8,7 @@ import { frameProps } from "./visuals";
 import { outputZooms } from "./zooms";
 import { buildCaptions, captionsOn } from "./captions";
 import { buildOverlays, drawnOverlays, sceneLengths } from "./overlays";
+import { musicOf } from "./music";
 import { compositionSize, DEFAULT_QUALITY, FPS, type ExportQuality } from "@/remotion/constants";
 import type { RenderProps } from "@/remotion/root";
 
@@ -40,6 +41,7 @@ export async function startExport(id: string, origin: string, quality: ExportQua
     captions: captionsOn(project) ? buildCaptions(project, plan) : [],
     overlays,
     duration: plan.outputDuration,
+    music: musicOf(project, media),
     ...size,
     durationInFrames: Math.max(1, Math.round((lead + plan.outputDuration + tail) * FPS)),
   };
