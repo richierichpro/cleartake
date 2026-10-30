@@ -98,6 +98,7 @@ export async function updateProject(
     captions?: { enabled: boolean };
     director?: DirectorContent;
     scenes?: { intro?: boolean; outro?: boolean; flyIn?: boolean };
+    music?: { enabled?: boolean; volume?: number };
     visuals?: {
       background?: { enabled?: boolean; preset?: string };
       shadow?: Visuals["shadow"];
@@ -132,6 +133,14 @@ export async function rebuildSegments(id: string) {
   if (!res.ok) throw new Error(body.error ?? "Could not build segments");
   return body as Project;
 }
+
+/** Music tab: compose the background track for a mood (ElevenLabs Music, ~10–30s). */
+export const composeMusic = (id: string, preset: string) =>
+  fetch(`/api/projects/${id}/music`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preset }),
+  }).then((r) => json<Project>(r));
 
 export const sampleInfo = () =>
   fetch("/api/projects/sample").then((r) => json<{ available: boolean; title?: string; duration?: number }>(r));

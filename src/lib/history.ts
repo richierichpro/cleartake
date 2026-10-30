@@ -4,7 +4,7 @@ import type { Project } from "./types";
 // (status, export, transcript info) is never undone. Generated voice clips stay on disk, so undoing
 // past a regenerated voice and redoing it again costs nothing.
 
-export const EDITABLE = ["segments", "cuts", "trim", "splits", "zooms", "visuals", "captions", "director", "scenes", "voice"] as const;
+export const EDITABLE = ["segments", "cuts", "trim", "splits", "zooms", "visuals", "captions", "director", "scenes", "voice", "music"] as const;
 export type EditableKey = (typeof EDITABLE)[number];
 export type Snapshot = Pick<Project, EditableKey>;
 
