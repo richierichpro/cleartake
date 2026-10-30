@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { chatJson } from "./llm";
 import { ocrFrames, type OcrItem } from "./ocr";
 import { projectFile, readJson, readProject } from "./projects";
+import { pointerBefore } from "./pointer";
 import { findPhraseTime, norm, tokens } from "./text-match";
 import { detectZoomCandidates, type ZoomCandidate } from "./zoom-detect";
 import type { Motion } from "./sync";
@@ -26,6 +27,7 @@ export interface ZoomSuggestion extends ZoomCandidate {
   phrase?: string; // what you said
   ocrText?: string; // what it matched on screen
   confirmedByChange?: boolean; // the screen also changed there
+  atPointer?: boolean; // a click zoom centred on the mouse pointer (found in the frames)
   score: number;
 }
 
@@ -178,6 +180,17 @@ export async function suggestZooms(projectId: string): Promise<ZoomSuggestions> 
       const m = mentions.find((x) => x.phrase === z.phrase && x.time !== undefined && x.time >= z.start && x.time <= z.end);
       if (m) m.status = "too-close";
     }
+  }
+  // 5. Clicks zoom where you clicked: find the mouse pointer just before the change (fallback: the change).
+  for (const z of kept) {
+    if (z.reason !== "click") continue;
+    const at = await pointerBefore(projectFile(projectId, project.video.file), z.start, project.video.width, project.video.height, {
+      x: z.x + z.w / 2,
+      y: z.y + z.h / 2,
+    }).catch(() => null);
+    if (!at) continue;
+    const half = 0.04; // a small box around the pointer, so the zoom centres on it
+    Object.assign(z, { x: Math.max(0, at.x - half), y: Math.max(0, at.y - half), w: 2 * half, h: 2 * half, atPointer: true });
   }
   return { candidates: kept.sort((a, b) => a.start - b.start), mentions, config: c };
 }

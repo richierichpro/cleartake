@@ -456,7 +456,9 @@ function ZoomDebug({ zoom, plan, playback }: { zoom: ZoomDetectionState; plan: S
                           </>
                         ) : (
                           <span className="text-muted-foreground">
-                            {z.reason === "typing" ? "Typing in a field" : "Click: part of the screen changed (subtle zoom)"}
+                            {z.reason === "typing"
+                              ? "Typing in a field"
+                              : `Click (subtle zoom) · ${z.atPointer ? "on the mouse pointer" : "pointer not found, on the change"}`}
                           </span>
                         )}
                       </td>
