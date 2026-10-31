@@ -41,12 +41,19 @@ export async function ocrFrames(video: string, times: number[]): Promise<OcrItem
     const files: string[] = [];
     for (const [i, t] of times.entries()) {
       const file = path.join(dir, `f${i}.jpg`);
-      // Tesseract reads small UI text better when it's bigger: double frames under 2000px wide.
-      const scale = ENGINE === "tesseract" ? ["-vf", "scale='if(lt(iw,2000),iw*2,iw)':-2"] : [];
+      // Tesseract: 1920 wide reads UI text as well as a Retina frame, about 2× faster (and enlarges small ones).
+      const scale = ENGINE === "tesseract" ? ["-vf", "scale=1920:-2"] : [];
       await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", t.toFixed(3), "-i", video, ...scale, "-frames:v", "1", "-q:v", "2", "-y", file]);
       files.push(file);
     }
-    if (ENGINE === "tesseract") return await Promise.all(files.map(tesseract));
+    if (ENGINE === "tesseract") {
+      // A couple at a time: a server may have one CPU and 2 GB, and each Tesseract takes ~100 MB.
+      const results: OcrItem[][] = [];
+      for (let i = 0; i < files.length; i += TESSERACT_PARALLEL) {
+        results.push(...(await Promise.all(files.slice(i, i + TESSERACT_PARALLEL).map(tesseract))));
+      }
+      return results;
+    }
     const { stdout } = await run(BINARY, files, { maxBuffer: 32 * 1024 * 1024, timeout: 120_000 });
     const byFile = new Map<string, OcrItem[]>();
     for (const line of stdout.split("\n")) {
@@ -64,8 +71,14 @@ export async function ocrFrames(video: string, times: number[]): Promise<OcrItem
  * Tesseract (sparse text mode: UI text is scattered) gives words with boxes; words on one line become
  * one item, like Vision's lines. Missing Tesseract = nothing read (zooms on named elements are skipped).
  */
+const TESSERACT_PARALLEL = 2;
+
 async function tesseract(file: string): Promise<OcrItem[]> {
-  const out = await run("tesseract", [file, "stdout", "--psm", "11", "tsv"], { maxBuffer: 32 * 1024 * 1024, timeout: 60_000 }).catch(() => null);
+  const out = await run("tesseract", [file, "stdout", "--psm", "11", "tsv"], {
+    maxBuffer: 32 * 1024 * 1024,
+    timeout: 60_000,
+    env: { ...process.env, OMP_THREAD_LIMIT: "1" }, // one thread each; they run side by side
+  }).catch(() => null);
   if (!out) return [];
   const rows = out.stdout.split("\n").slice(1).map((l) => l.split("\t"));
   const page = rows.find((r) => r[0] === "1");
