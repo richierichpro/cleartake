@@ -23,6 +23,7 @@ export const POINTER_CONFIG = {
   recent: 10, // frame pairs each side: a spot that blinks in ≥ `blinks` other quiet pairs this close is
   blinks: 2, // animating in place (a spinner, a tab's loading icon), not the pointer arriving
   quietBlobs: 10, // a pair with at most this many blobs is quiet (when content changes, letters are blobs)
+  near: 0.05, // a click changes something around the pointer (or the whole page): its change box, grown by this share
   minMove: 20, // px: right after a click (within nudgeTime), the pointer must move this far for a new one
   nudgeTime: 1.5,
   clickLead: 0.5, // seconds: the click is at most this long before the screen changes (or when the pointer stopped)
@@ -167,7 +168,8 @@ export async function detectClicks(video: string, videoWidth: number, videoHeigh
   // changes, every letter is a pointer-sized blob). The pointer shows twice in a pair (where it left,
   // where it arrived); where it left is where it was in the pair before. A spot that keeps blinking
   // (a spinner, a tab's loading icon) is animating in place; the pointer arrives at a spot once, and
-  // shows there again at most when it leaves.
+  // shows there again at most when it leaves. (A longer window also catches a hovering pointer, so
+  // slower blinks, like a pulsing dot on a button, are left to the "near the change" rule below.)
   const close = (a: Blob, b: Blob) => Math.hypot(a.x - b.x, a.y - b.y) <= c.same;
   const quiet = (p: Pair) => p.change < c.minChange && p.blobs.length <= c.quietBlobs;
   const blinking = (b: Blob, k: number) =>
@@ -214,6 +216,11 @@ export async function detectClicks(video: string, videoWidth: number, videoHeigh
     const near = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
     const dist = (b: Blob) => Math.hypot(b.x - near.x, b.y - near.y);
     const pick = arrivals[k].reduce((best, b) => (dist(b) < dist(best) ? b : best));
+    // The change must be around the pointer: a panel opening across the screen while the pointer is
+    // elsewhere is the page loading, not your click.
+    const mx = c.near * width;
+    const my = c.near * height;
+    if (pick.tip.x < box.x0 - mx || pick.tip.x > box.x1 + mx || pick.tip.y < box.y0 - my || pick.tip.y > box.y1 + my) continue;
     const nudge = last && pairs[k].t - last.t < c.nudgeTime && Math.hypot(pick.x - last.at.x, pick.y - last.at.y) < c.minMove;
     if (nudge) continue; // the pointer settling after the last click, not a new one
     last = { at: pick, t: pairs[k].t };

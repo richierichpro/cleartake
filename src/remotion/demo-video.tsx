@@ -36,8 +36,6 @@ const INK = "#111113";
 const FADE = 8; // frames for scene fades
 // Mount scenes this early (hidden), so their videos are loaded when they appear: no blank flash.
 const PREMOUNT = 2 * FPS;
-// A ring that pulses where you clicked (click zooms), sizes at 1080p.
-const RIPPLE = { length: 0.6, from: 14, to: 90, border: 5 };
 // Held frames (the voice is longer than the action) push in this much and back, so they don't look frozen.
 const DRIFT = { amount: 0.025, minHold: 0.8 };
 
@@ -133,7 +131,6 @@ function Main({
         <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: radius, background: "#000" }}>
           <div style={{ position: "absolute", inset: 0, transformOrigin: "0 0", transform: zoomTransform }}>
             <Recording pieces={pieces} videoSrc={videoSrc} muteOriginal={muteOriginal || still} crossfades={overlays.crossfades} zooms={zooms} />
-            {!bare && <ClickRipples zooms={zooms} />}
           </div>
         </div>
       </div>
@@ -178,39 +175,6 @@ function useZoomTransform(zooms: OutputZoom[]) {
   if (!glides(z, zooms[i + 1])) scale += (1 - scale) * spring({ frame: frame - Math.round(z.end * fps), ...ease(ZOOM_LIMITS.easeOut) });
   const win = zoomWindow(x, y, scale);
   return `scale(${scale}) translate(${-win.left * 100}%, ${-win.top * 100}%)`;
-}
-
-// A ring that grows and fades where you clicked, on the recording (it zooms with it).
-function ClickRipples({ zooms }: { zooms: OutputZoom[] }) {
-  const frame = useCurrentFrame();
-  const { fps, height } = useVideoConfig();
-  const t = frame / fps;
-  const s = height / 1080;
-  return zooms.map((z) => {
-    const c = z.click;
-    // Only while it's the zoom's click (a zoom moved elsewhere by hand loses its ripple).
-    if (!c || c.time < z.start - 0.1 || c.time > z.end || t < c.time || t >= c.time + RIPPLE.length) return null;
-    const p = (t - c.time) / RIPPLE.length;
-    const size = (RIPPLE.from + (RIPPLE.to - RIPPLE.from) * Math.sqrt(p)) * s;
-    return (
-      <div
-        key={z.id}
-        style={{
-          position: "absolute",
-          left: `${c.x * 100}%`,
-          top: `${c.y * 100}%`,
-          width: size,
-          height: size,
-          marginLeft: -size / 2,
-          marginTop: -size / 2,
-          borderRadius: "50%",
-          border: `${RIPPLE.border * s}px solid ${ACCENT}`,
-          background: `${ACCENT}33`,
-          opacity: 0.9 * (1 - p),
-        }}
-      />
-    );
-  });
 }
 
 // Pushes in a little and back over a held frame of `length` frames (peaks in the middle, so the video
