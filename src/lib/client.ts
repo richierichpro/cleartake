@@ -71,7 +71,7 @@ export function uploadVideo(
   });
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/projects?${params}`);
+    xhr.open("POST", `/api/upload?${params}`);
     xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => {

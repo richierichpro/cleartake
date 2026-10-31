@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 
 import { mutateProject, projectFile, readProject, writeJson } from "./projects";
+import { renderKey } from "./auth";
 import { loadSyncPlan } from "./sync-server";
 import { voiceOf } from "./voice-settings";
 import { frameProps } from "./visuals";
@@ -28,7 +29,9 @@ export async function startExport(id: string, origin: string, quality: ExportQua
   const { plan, words } = await loadSyncPlan(project);
   const overlays = drawnOverlays(buildOverlays(project, plan, words));
   const { lead, tail } = sceneLengths(overlays);
-  const media = (file: string) => `${origin}/api/projects/${id}/media/${file}`;
+  // With a password set (lib/auth.ts), the renderer's media links carry its key.
+  const key = await renderKey();
+  const media = (file: string) => `${origin}/api/projects/${id}/media/${file}${key ? `?key=${key}` : ""}`;
   const frame = frameProps(project, media);
   const size = compositionSize(project.video.width, project.video.height, quality, frame.framed);
   const props: RenderProps = {
