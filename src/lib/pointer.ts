@@ -28,7 +28,7 @@ export const POINTER_CONFIG = {
   clickLead: 0.5, // seconds: the click is at most this long before the screen changes (or when the pointer stopped)
 };
 
-type Blob = { x: number; y: number; px: number };
+type Blob = { x: number; y: number; px: number; tip: { x: number; y: number } };
 type Box = { x0: number; y0: number; x1: number; y1: number };
 
 /** One frame pair: the pointer-sized blobs (where it left and arrived), and how much of the screen changed. */
@@ -88,7 +88,8 @@ function compare(a: Uint8Array, b: Uint8Array, width: number, height: number) {
     }
     if (px < c.minPx) continue;
     if (x1 - x0 <= c.pointerBox && y1 - y0 <= c.pointerBox) {
-      blobs.push({ x: sx / px, y: sy / px, px });
+      // You click with the pointer's tip: the top of the arrow, a bit left of the middle for a hand.
+      blobs.push({ x: sx / px, y: sy / px, px, tip: { x: x0 + (x1 - x0) * 0.3, y: y0 + (y1 - y0) * 0.1 } });
     } else {
       changed += px;
       box = box
@@ -220,8 +221,8 @@ export async function detectClicks(video: string, videoWidth: number, videoHeigh
     clicks.push({
       time: Math.max(pairs[k].t, changeAt - c.clickLead),
       changeAt,
-      x: pick.x / width,
-      y: pick.y / height,
+      x: pick.tip.x / width,
+      y: pick.tip.y / height,
       change: { x0: box.x0 / width, y0: box.y0 / height, x1: (box.x1 + 1) / width, y1: (box.y1 + 1) / height },
     });
   }
