@@ -153,7 +153,7 @@ function Main({
   );
 }
 
-// Zoom: spring in at the start, hold, snap back to the full screen at the end. Zooms are ≥ 3s apart, so they never overlap.
+// Zoom: spring in at the start, hold, snap back to the full screen at the end. Zooms are ≥ 1s apart, so they never overlap.
 function useZoomTransform(zooms: OutputZoom[]) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();

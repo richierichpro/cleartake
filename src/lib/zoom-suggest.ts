@@ -14,7 +14,7 @@ import type { Project, Transcript } from "./types";
 export const ZOOM_SUGGEST_CONFIG = {
   leadIn: 0.4, // start zooming this long before the phrase is spoken
   hold: 1.2, // stay zoomed this long after it's spoken (short: a quick look, then back)
-  minGap: 3, // spec: no zooms closer than this
+  minGap: 2, // start to start: a short zoom plus ZOOM_LIMITS.minGap
   ocrOffsets: [-1, -0.5, 0, 1], // OCR around the phrase: people name a button as they click it (it changes), or just before it appears
   minMatch: 0.6, // how closely on-screen text must match the phrase (0–1)
   typingMinLength: 1, // a small region changing this long (s) counts as typing

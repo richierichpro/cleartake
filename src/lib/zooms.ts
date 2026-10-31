@@ -8,7 +8,7 @@ export const ZOOM_LIMITS = {
   minScale: 1.2,
   maxScale: 2.5,
   defaultScale: 1.6,
-  minGap: 3, // spec: no zooms closer than this (output seconds)
+  minGap: 1, // seconds of full screen between zooms (output seconds); was 3, but quick clicks each deserve a zoom
   defaultLength: 1.8, // a zoom added by hand, and the shortest automatic one (edited video)
   minLength: 1,
   ease: 0.5, // seconds to spring in
