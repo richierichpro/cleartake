@@ -36,6 +36,10 @@ const INK = "#111113";
 const FADE = 8; // frames for scene fades
 // Mount scenes this early (hidden), so their videos are loaded when they appear: no blank flash.
 const PREMOUNT = 2 * FPS;
+// A ring that pulses where you clicked (click zooms), sizes at 1080p.
+const RIPPLE = { length: 0.6, from: 14, to: 90, border: 5 };
+// Held frames (the voice is longer than the action) push in this much and back, so they don't look frozen.
+const DRIFT = { amount: 0.025, minHold: 0.8 };
 
 export function DemoVideo(props: DemoVideoProps) {
   const { frame, overlays, duration } = props;
@@ -128,7 +132,8 @@ function Main({
       >
         <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: radius, background: "#000" }}>
           <div style={{ position: "absolute", inset: 0, transformOrigin: "0 0", transform: zoomTransform }}>
-            <Recording pieces={pieces} videoSrc={videoSrc} muteOriginal={muteOriginal || still} crossfades={overlays.crossfades} />
+            <Recording pieces={pieces} videoSrc={videoSrc} muteOriginal={muteOriginal || still} crossfades={overlays.crossfades} zooms={zooms} />
+            {!bare && <ClickRipples zooms={zooms} />}
           </div>
         </div>
       </div>
@@ -153,20 +158,67 @@ function Main({
   );
 }
 
-// Zoom: spring in at the start, hold, snap back to the full screen at the end. Zooms are ≥ 1s apart, so they never overlap.
+// Zoom: spring in at the start, hold, snap back to the full screen at the end. Zooms never overlap. One that
+// starts within glideGap of the previous one's end glides there instead: the camera stays zoomed and pans.
+const glides = (a?: OutputZoom, b?: OutputZoom) => !!a && !!b && b.start - a.end < ZOOM_LIMITS.glideGap;
+
 function useZoomTransform(zooms: OutputZoom[]) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps;
-  const z = zooms.find((zoom) => t >= zoom.start && t < zoom.end + ZOOM_LIMITS.easeOut);
-  if (!z) return undefined;
+  const i = zooms.findIndex((z, k) => t >= z.start && t < (glides(z, zooms[k + 1]) ? zooms[k + 1].start : z.end + ZOOM_LIMITS.easeOut));
+  if (i < 0) return undefined;
+  const z = zooms[i];
   const ease = (seconds: number) => ({ fps, config: { damping: 200 }, durationInFrames: Math.max(1, Math.round(seconds * fps)) });
-  const zoomIn = spring({ frame: frame - Math.round(z.start * fps), ...ease(ZOOM_LIMITS.ease) });
-  const zoomOut = spring({ frame: frame - Math.round(z.end * fps), ...ease(ZOOM_LIMITS.easeOut) });
-  const p = Math.max(0, Math.min(1, zoomIn - zoomOut));
-  const scale = 1 + (z.scale - 1) * p;
-  const win = zoomWindow(z.x, z.y, scale);
+  const from = glides(zooms[i - 1], z) ? zooms[i - 1] : { x: z.x, y: z.y, scale: 1 };
+  const p = spring({ frame: frame - Math.round(z.start * fps), ...ease(ZOOM_LIMITS.ease) });
+  const x = from.x + (z.x - from.x) * p;
+  const y = from.y + (z.y - from.y) * p;
+  let scale = from.scale + (z.scale - from.scale) * p;
+  if (!glides(z, zooms[i + 1])) scale += (1 - scale) * spring({ frame: frame - Math.round(z.end * fps), ...ease(ZOOM_LIMITS.easeOut) });
+  const win = zoomWindow(x, y, scale);
   return `scale(${scale}) translate(${-win.left * 100}%, ${-win.top * 100}%)`;
+}
+
+// A ring that grows and fades where you clicked, on the recording (it zooms with it).
+function ClickRipples({ zooms }: { zooms: OutputZoom[] }) {
+  const frame = useCurrentFrame();
+  const { fps, height } = useVideoConfig();
+  const t = frame / fps;
+  const s = height / 1080;
+  return zooms.map((z) => {
+    const c = z.click;
+    // Only while it's the zoom's click (a zoom moved elsewhere by hand loses its ripple).
+    if (!c || c.time < z.start - 0.1 || c.time > z.end || t < c.time || t >= c.time + RIPPLE.length) return null;
+    const p = (t - c.time) / RIPPLE.length;
+    const size = (RIPPLE.from + (RIPPLE.to - RIPPLE.from) * Math.sqrt(p)) * s;
+    return (
+      <div
+        key={z.id}
+        style={{
+          position: "absolute",
+          left: `${c.x * 100}%`,
+          top: `${c.y * 100}%`,
+          width: size,
+          height: size,
+          marginLeft: -size / 2,
+          marginTop: -size / 2,
+          borderRadius: "50%",
+          border: `${RIPPLE.border * s}px solid ${ACCENT}`,
+          background: `${ACCENT}33`,
+          opacity: 0.9 * (1 - p),
+        }}
+      />
+    );
+  });
+}
+
+// Pushes in a little and back over a held frame of `length` frames (peaks in the middle, so the video
+// resumes without a jump). 0 = no drift.
+function Drift({ length, children }: { length: number; children: React.ReactNode }) {
+  const frame = useCurrentFrame();
+  const scale = length ? 1 + DRIFT.amount * Math.sin(Math.PI * Math.min(1, frame / length)) : 1;
+  return <AbsoluteFill style={{ transform: `scale(${scale})` }}>{children}</AbsoluteFill>;
 }
 
 /** 0 → 1 → 0 over an overlay's life: spring in at the start, fade out at the end. */
@@ -397,8 +449,12 @@ function Recording({
   videoSrc,
   muteOriginal,
   crossfades,
-}: Pick<DemoVideoProps, "pieces" | "videoSrc" | "muteOriginal"> & { crossfades: number[] }) {
+  zooms,
+}: Pick<DemoVideoProps, "pieces" | "videoSrc" | "muteOriginal" | "zooms"> & { crossfades: number[] }) {
   const xf = frames(OVERLAY_CONFIG.crossfade);
+  // Held frames drift, unless a zoom is moving or holding then (one motion at a time).
+  const drifts = (from: number, to: number) =>
+    to - from >= DRIFT.minHold && !zooms.some((z) => z.start < to && from < z.end + ZOOM_LIMITS.easeOut);
   return (
     <>
       {pieces.map((p, i) => {
@@ -427,15 +483,17 @@ function Recording({
             {end > movingEnd && (
               <Sequence from={movingEnd} durationInFrames={end - movingEnd + overlap} premountFor={FPS}>
                 <FadeIn frames={movingEnd > from ? 0 : fadeIn}>
-                  <Freeze frame={0}>
-                    <Video
-                      src={videoSrc}
-                      trimBefore={Math.max(0, frames(p.sourceEnd) - 1)}
-                      muted
-                      style={{ width: "100%", height: "100%" }}
-                      objectFit="contain"
-                    />
-                  </Freeze>
+                  <Drift length={drifts(movingEnd / FPS, end / FPS) ? end - movingEnd : 0}>
+                    <Freeze frame={0}>
+                      <Video
+                        src={videoSrc}
+                        trimBefore={Math.max(0, frames(p.sourceEnd) - 1)}
+                        muted
+                        style={{ width: "100%", height: "100%" }}
+                        objectFit="contain"
+                      />
+                    </Freeze>
+                  </Drift>
                 </FadeIn>
               </Sequence>
             )}
