@@ -1,48 +1,61 @@
 import { spawn } from "node:child_process";
 
-// Where the mouse pointer was when you clicked. A recording has no click data, but the pointer is drawn
-// into it: comparing each frame with the next shows it moving, and the last place it moved to before the
-// screen changed is where it rested when you clicked (people hover a moment, then click).
+// Clicks, found from the mouse pointer. A recording has no click data, but the pointer is drawn into it:
+// comparing each frame with the next shows it moving. A click is the pointer coming to rest and then the
+// screen changing: a button press, a menu or panel opening, a whole new page. Changes that come without
+// the pointer moving first (a page still loading, an animation) and scrolls (the page sliding) aren't clicks.
 
 export const POINTER_CONFIG = {
   width: 640, // analysis width; a pointer is ~8×12 px here
-  window: 2.5, // seconds before the change to follow the pointer
   fps: 10,
-  diff: 40, // gray-level change between frames that counts
+  diff: 40, // gray-level change between frames that counts (subtle hover highlights stay below it)
   minPx: 6, // smaller blobs are noise
-  maxBox: 90, // px: bigger blobs aren't the pointer (a panel opening, a scroll)
+  pointerBox: 24, // px: changed blobs up to this size can be the pointer; bigger ones are the screen changing
+  window: 2.5, // seconds before a change to look for the pointer
   same: 8, // px: blobs this close in consecutive frame pairs are the same spot
+  minChange: 0.002, // share of the screen (besides the pointer) that must change: a click shows a result
+  quiet: 0.6, // seconds: changes closer than this are one event (a panel animating open)
+  scrollShift: 80, // px: a change that shifting its part of the frame up or down by up to this explains…
+  scrollMatch: 0.5, // …this much better than not shifting is a scroll (the page or a sidebar)
+  endIgnore: 1.5, // seconds: changes this close to the end are you stopping the recording
+  minThickness: 6, // px: thinner changes (a scrollbar, a browser's link preview) aren't click results
+  pointerBlobs: 3, // a frame pair with more small blobs than this is content changing, not the pointer moving
+  recent: 10, // frame pairs each side: a spot that blinks in ≥ `blinks` other quiet pairs this close is
+  blinks: 2, // animating in place (a spinner, a tab's loading icon), not the pointer arriving
+  quietBlobs: 10, // a pair with at most this many blobs is quiet (when content changes, letters are blobs)
+  minMove: 20, // px: right after a click (within nudgeTime), the pointer must move this far for a new one
+  nudgeTime: 1.5,
+  clickLead: 0.5, // seconds: the click is at most this long before the screen changes (or when the pointer stopped)
 };
 
-/** Grayscale frames over [start, end) at POINTER_CONFIG.width. */
-function grabFrames(video: string, start: number, end: number, width: number, height: number): Promise<Uint8Array[]> {
-  const c = POINTER_CONFIG;
-  return new Promise((resolve, reject) => {
-    const args = ["-hide_banner", "-loglevel", "error", "-ss", start.toFixed(3), "-t", (end - start).toFixed(3), "-i", video];
-    args.push("-vf", `fps=${c.fps},scale=${width}:${height},format=gray`, "-f", "rawvideo", "pipe:1");
-    const proc = spawn("ffmpeg", args);
-    const chunks: Buffer[] = [];
-    proc.stdout.on("data", (d: Buffer) => chunks.push(d));
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      if (code !== 0) return reject(new Error("ffmpeg couldn't read frames"));
-      const all = Buffer.concat(chunks);
-      const size = width * height;
-      const frames: Uint8Array[] = [];
-      for (let o = 0; o + size <= all.length; o += size) frames.push(new Uint8Array(all.buffer, all.byteOffset + o, size));
-      resolve(frames);
-    });
-  });
+type Blob = { x: number; y: number; px: number };
+type Box = { x0: number; y0: number; x1: number; y1: number };
+
+/** One frame pair: the pointer-sized blobs (where it left and arrived), and how much of the screen changed. */
+interface Pair {
+  t: number; // seconds, the second frame of the pair
+  blobs: Blob[];
+  change: number; // share of the screen in bigger blobs
+  box: Box | null; // where it changed
+  scroll: boolean;
 }
 
-type Blob = { x: number; y: number; px: number };
+export interface Click {
+  time: number; // source seconds: when you clicked (the pointer at rest, at most clickLead before the change)
+  changeAt: number; // when the screen changed
+  x: number; // pointer position, 0–1 of the recording
+  y: number;
+  change: Box; // what changed, 0–1
+}
 
-/** Small changed blobs between two frames (pointer-sized). */
-function blobsBetween(a: Uint8Array, b: Uint8Array, width: number, height: number): Blob[] {
+/** Changed blobs between two frames, split into pointer-sized ones and the rest. */
+function compare(a: Uint8Array, b: Uint8Array, width: number, height: number) {
   const c = POINTER_CONFIG;
   const mask = new Uint8Array(width * height);
   for (let i = 0; i < mask.length; i++) if (Math.abs(a[i] - b[i]) > c.diff) mask[i] = 1;
   const blobs: Blob[] = [];
+  let changed = 0;
+  let box: Box | null = null;
   const stack: number[] = [];
   for (let start = 0; start < mask.length; start++) {
     if (mask[start] !== 1) continue;
@@ -73,43 +86,144 @@ function blobsBetween(a: Uint8Array, b: Uint8Array, width: number, height: numbe
         }
       }
     }
-    if (px >= c.minPx && x1 - x0 <= c.maxBox && y1 - y0 <= c.maxBox) blobs.push({ x: sx / px, y: sy / px, px });
+    if (px < c.minPx) continue;
+    if (x1 - x0 <= c.pointerBox && y1 - y0 <= c.pointerBox) {
+      blobs.push({ x: sx / px, y: sy / px, px });
+    } else {
+      changed += px;
+      box = box
+        ? { x0: Math.min(box.x0, x0), y0: Math.min(box.y0, y0), x1: Math.max(box.x1, x1), y1: Math.max(box.y1, y1) }
+        : { x0, y0, x1, y1 };
+    }
   }
-  return blobs;
+  return { blobs, change: changed / mask.length, box };
 }
 
-/**
- * The pointer's position (0–1 of the recording) when you clicked just before `t`, or null if it can't
- * be seen. `near` (0–1): what changed on screen, to break ties (you click close to what changes).
- */
-export async function pointerBefore(video: string, t: number, videoWidth: number, videoHeight: number, near?: { x: number; y: number }) {
+/** True if, inside the box, b is mostly a vertically shifted a (the page or a sidebar scrolled). Sampled. */
+function isScroll(a: Uint8Array, b: Uint8Array, width: number, height: number, box: Box) {
+  const c = POINTER_CONFIG;
+  const m = c.scrollShift;
+  const y0 = Math.max(m, box.y0);
+  const y1 = Math.min(height - m, box.y1 + 1);
+  if (y1 - y0 < 6) return false;
+  const diffAt = (dy: number) => {
+    let sum = 0;
+    let n = 0;
+    for (let y = y0; y < y1; y += 3) {
+      for (let x = box.x0; x <= box.x1; x += 3) {
+        sum += Math.abs(a[(y + dy) * width + x] - b[y * width + x]);
+        n++;
+      }
+    }
+    return sum / n;
+  };
+  const still = diffAt(0);
+  let best = still;
+  for (let dy = -m; dy <= m; dy += 2) if (dy) best = Math.min(best, diffAt(dy));
+  return best < still * c.scrollMatch;
+}
+
+/** Streams the recording through ffmpeg (grayscale, POINTER_CONFIG.width) and compares each frame with the last. */
+export function scan(video: string, width: number, height: number): Promise<Pair[]> {
+  const c = POINTER_CONFIG;
+  const size = width * height;
+  return new Promise((resolve, reject) => {
+    const args = ["-hide_banner", "-loglevel", "error", "-i", video];
+    args.push("-vf", `fps=${c.fps},scale=${width}:${height},format=gray`, "-f", "rawvideo", "pipe:1");
+    const proc = spawn("ffmpeg", args);
+    const pairs: Pair[] = [];
+    let prev: Uint8Array | null = null;
+    let pending = Buffer.alloc(0);
+    let index = 0;
+    proc.stdout.on("data", (d: Buffer) => {
+      pending = Buffer.concat([pending, d]);
+      while (pending.length >= size) {
+        const frame = new Uint8Array(pending.subarray(0, size));
+        pending = pending.subarray(size);
+        if (prev) {
+          const r = compare(prev, frame, width, height);
+          const scroll = r.change > c.minChange && !!r.box && isScroll(prev, frame, width, height, r.box);
+          pairs.push({ t: index / c.fps, ...r, scroll });
+        }
+        prev = frame;
+        index++;
+      }
+    });
+    proc.on("error", reject);
+    proc.on("close", (code) => (code === 0 ? resolve(pairs) : reject(new Error("ffmpeg couldn't read frames"))));
+  });
+}
+
+/** Every click in the recording, in order. */
+export async function detectClicks(video: string, videoWidth: number, videoHeight: number): Promise<Click[]> {
   const c = POINTER_CONFIG;
   const width = c.width;
   const height = Math.round((width * videoHeight) / videoWidth / 2) * 2;
-  const frames = await grabFrames(video, Math.max(0, t - c.window), Math.max(0.05, t - 0.05), width, height).catch(() => []);
-  if (frames.length < 3) return null;
+  const pairs = await scan(video, width, height);
+  const duration = pairs.length / c.fps;
 
-  // The last frame pair where something pointer-sized moved: the pointer's last move before the click.
-  const moves: Blob[][] = [];
-  for (let k = 0; k + 1 < frames.length; k++) moves.push(blobsBetween(frames[k], frames[k + 1], width, height));
-  const k = moves.findLastIndex((m) => m.length > 0);
-  if (k < 0) return null;
-
-  // In that pair the pointer shows twice: where it left and where it arrived. Where it left was where it
-  // arrived in the previous move, so drop blobs that were already there.
+  // Where the pointer arrived, per frame pair. Only pairs where little else changed count (when text
+  // changes, every letter is a pointer-sized blob). The pointer shows twice in a pair (where it left,
+  // where it arrived); where it left is where it was in the pair before. A spot that keeps blinking
+  // (a spinner, a tab's loading icon) is animating in place; the pointer arrives at a spot once, and
+  // shows there again at most when it leaves.
   const close = (a: Blob, b: Blob) => Math.hypot(a.x - b.x, a.y - b.y) <= c.same;
-  const before = moves[k - 1] ?? [];
-  const arrived = moves[k].filter((b) => !before.some((p) => close(b, p)));
-  const options = arrived.length ? arrived : moves[k];
-  const target = near ? { x: near.x * width, y: near.y * height } : null;
-  const pick = options.reduce((best, b) =>
-    target
-      ? Math.hypot(b.x - target.x, b.y - target.y) < Math.hypot(best.x - target.x, best.y - target.y)
-        ? b
-        : best
-      : b.px > best.px
-        ? b
-        : best,
-  );
-  return { x: pick.x / width, y: pick.y / height };
+  const quiet = (p: Pair) => p.change < c.minChange && p.blobs.length <= c.quietBlobs;
+  const blinking = (b: Blob, k: number) =>
+    pairs.filter((q, j) => Math.abs(j - k) > 1 && Math.abs(j - k) <= c.recent && quiet(q) && q.blobs.some((x) => close(b, x))).length >= c.blinks;
+  const arrivals = pairs.map((p, k) => {
+    if (!quiet(p) || p.blobs.length > c.pointerBlobs) return [];
+    const left = pairs[k - 1]?.blobs ?? [];
+    const moved = p.blobs.length > 1 ? p.blobs.filter((b) => !left.some((q) => close(b, q))) : p.blobs;
+    return moved.filter((b) => !blinking(b, k));
+  });
+
+  // Screen changes: runs of changed frame pairs, merged when close together (unless the pointer moved in
+  // between: that's a second click). Hair-thin changes (a scrollbar showing, the link preview at the
+  // bottom of a browser) don't count. An event that is mostly sliding content is a scroll; one that is
+  // mostly not is a click result (opening a panel can nudge a sidebar, which looks like a small scroll).
+  const thin = (b: Box) => b.x1 - b.x0 < c.minThickness || b.y1 - b.y0 < c.minThickness;
+  const events: { first: number; last: number; box: Box | null; scrolled: number; changed: number }[] = [];
+  pairs.forEach((p, k) => {
+    if (p.change < c.minChange || !p.box || thin(p.box) || p.t > duration - c.endIgnore) return;
+    let e = events.at(-1);
+    const movedSince = e && arrivals.slice(e.last + 1, k).some((a) => a.length);
+    if (!e || p.t - pairs[e.last].t >= c.quiet || movedSince) events.push((e = { first: k, last: k, box: null, scrolled: 0, changed: 0 }));
+    e.last = k;
+    if (p.scroll) e.scrolled += p.change;
+    else {
+      e.changed += p.change;
+      e.box ??= p.box;
+    }
+  });
+
+  const clicks: Click[] = [];
+  let since = 0; // the pointer must move after the previous change for the next one to be a click
+  let last: { at: Blob; t: number } | null = null; // the previous click
+  for (const e of events) {
+    const from = Math.max(since, e.first - Math.round(c.window * c.fps));
+    since = e.last + 1;
+    if (!e.box || e.scrolled >= e.changed) continue;
+    // The last pair before the change where the pointer moved: where it arrived is where you clicked.
+    let k = e.first - 1;
+    while (k >= from && !arrivals[k].length) k--;
+    if (k < from) continue; // the pointer didn't move: a page still loading, an animation
+    // Ties: you click close to what changes.
+    const box = e.box;
+    const near = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
+    const dist = (b: Blob) => Math.hypot(b.x - near.x, b.y - near.y);
+    const pick = arrivals[k].reduce((best, b) => (dist(b) < dist(best) ? b : best));
+    const nudge = last && pairs[k].t - last.t < c.nudgeTime && Math.hypot(pick.x - last.at.x, pick.y - last.at.y) < c.minMove;
+    if (nudge) continue; // the pointer settling after the last click, not a new one
+    last = { at: pick, t: pairs[k].t };
+    const changeAt = pairs[e.first].t;
+    clicks.push({
+      time: Math.max(pairs[k].t, changeAt - c.clickLead),
+      changeAt,
+      x: pick.x / width,
+      y: pick.y / height,
+      change: { x0: box.x0 / width, y0: box.y0 / height, x1: (box.x1 + 1) / width, y1: (box.y1 + 1) / height },
+    });
+  }
+  return clicks;
 }

@@ -2,14 +2,15 @@ import fs from "node:fs/promises";
 import { chatJson } from "./llm";
 import { ocrFrames, type OcrItem } from "./ocr";
 import { projectFile, readJson, readProject } from "./projects";
-import { pointerBefore } from "./pointer";
+import { detectClicks } from "./pointer";
 import { findPhraseTime, norm, tokens } from "./text-match";
 import { detectZoomCandidates, type ZoomCandidate } from "./zoom-detect";
 import type { Motion } from "./sync";
 import type { Project, Transcript } from "./types";
 
 // Step 12 (revised): zoom where the narration points. The AI lists UI elements the speaker names,
-// the transcript says when, OCR says where. Screen-change detection is only a backup (typing).
+// the transcript says when, OCR says where. Every click gets a subtle zoom (found from the mouse pointer);
+// screen-change detection adds typing.
 
 export const ZOOM_SUGGEST_CONFIG = {
   leadIn: 0.4, // start zooming this long before the phrase is spoken
@@ -19,7 +20,7 @@ export const ZOOM_SUGGEST_CONFIG = {
   minMatch: 0.6, // how closely on-screen text must match the phrase (0–1)
   typingMinLength: 1, // a small region changing this long (s) counts as typing
   typingMaxArea: 0.08, // …if it covers at most this share of the screen
-  clickMaxArea: 0.25, // any other change up to this share of the screen (a button press, a menu opening) = a click: a subtle zoom
+  clickBox: 0.08, // a click zoom centres on a box this size around the pointer
 };
 
 export interface ZoomSuggestion extends ZoomCandidate {
@@ -27,7 +28,6 @@ export interface ZoomSuggestion extends ZoomCandidate {
   phrase?: string; // what you said
   ocrText?: string; // what it matched on screen
   confirmedByChange?: boolean; // the screen also changed there
-  atPointer?: boolean; // a click zoom centred on the mouse pointer (found in the frames)
   score: number;
 }
 
@@ -162,17 +162,32 @@ export async function suggestZooms(projectId: string): Promise<ZoomSuggestions> 
     });
   });
 
-  // 3. Backup: typing (a small region changing for a while), then clicks (any other change in part of
-  // the screen: a recording has no click data, but a button press or a menu opening shows up as one).
+  // 3. Every click: where the pointer was when the screen changed (see pointer.ts). Above typing, below
+  // narration (when you name what you click, that zoom is the same moment).
+  const clicks = await detectClicks(projectFile(projectId, project.video.file), project.video.width, project.video.height).catch(() => []);
+  const half = c.clickBox / 2;
+  for (const k of clicks) {
+    found.push({
+      id: `c${Math.round(k.time * 10)}`,
+      start: k.time,
+      end: Math.max(k.time, k.changeAt),
+      x: Math.max(0, Math.min(1 - c.clickBox, k.x - half)),
+      y: Math.max(0, Math.min(1 - c.clickBox, k.y - half)),
+      w: c.clickBox,
+      h: c.clickBox,
+      changedPx: 0,
+      reason: "click",
+      score: 0.8,
+    });
+  }
+  // 4. Backup: typing (a small region changing for a while).
   for (const z of changes) {
     if (z.end - z.start >= c.typingMinLength && z.w * z.h <= c.typingMaxArea) {
       found.push({ ...z, id: `t${z.id}`, reason: "typing", score: 0.5 });
-    } else if (z.w * z.h <= c.clickMaxArea) {
-      found.push({ ...z, id: `c${z.id}`, reason: "click", score: 0.3 });
     }
   }
 
-  // 4. Spacing: best first, nothing within minGap seconds of a kept zoom.
+  // 5. Spacing: best first, nothing within minGap seconds of a kept zoom.
   const kept: ZoomSuggestion[] = [];
   for (const z of [...found].sort((a, b) => b.score - a.score)) {
     if (kept.every((k) => Math.abs(k.start - z.start) >= c.minGap)) kept.push(z);
@@ -180,17 +195,6 @@ export async function suggestZooms(projectId: string): Promise<ZoomSuggestions> 
       const m = mentions.find((x) => x.phrase === z.phrase && x.time !== undefined && x.time >= z.start && x.time <= z.end);
       if (m) m.status = "too-close";
     }
-  }
-  // 5. Clicks zoom where you clicked: find the mouse pointer just before the change (fallback: the change).
-  for (const z of kept) {
-    if (z.reason !== "click") continue;
-    const at = await pointerBefore(projectFile(projectId, project.video.file), z.start, project.video.width, project.video.height, {
-      x: z.x + z.w / 2,
-      y: z.y + z.h / 2,
-    }).catch(() => null);
-    if (!at) continue;
-    const half = 0.04; // a small box around the pointer, so the zoom centres on it
-    Object.assign(z, { x: Math.max(0, at.x - half), y: Math.max(0, at.y - half), w: 2 * half, h: 2 * half, atPointer: true });
   }
   return { candidates: kept.sort((a, b) => a.start - b.start), mentions, config: c };
 }
