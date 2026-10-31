@@ -70,10 +70,10 @@ export function buildOverlays(project: Project, plan: SyncPlan, words: Transcrip
   const d = project.director;
   const scenes = scenesOf(project);
 
-  // Animations already on the timeline: zooms easing in and out.
+  // Animations already on the timeline: zooms easing in and snapping back.
   const busy: Window[] = outputZooms(project, plan).flatMap((z): Window[] => [
     [z.start, z.start + ZOOM_LIMITS.ease],
-    [z.end, z.end + ZOOM_LIMITS.ease],
+    [z.end, z.end + ZOOM_LIMITS.easeOut],
   ]);
 
   // Crossfades where the video jumps (a cut), unless a zoom is easing right then.

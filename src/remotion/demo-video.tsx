@@ -153,16 +153,16 @@ function Main({
   );
 }
 
-// Zoom: spring in at the start, hold, spring back out after the end. Zooms are ≥ 3s apart, so they never overlap.
+// Zoom: spring in at the start, hold, snap back to the full screen at the end. Zooms are ≥ 3s apart, so they never overlap.
 function useZoomTransform(zooms: OutputZoom[]) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps;
-  const z = zooms.find((zoom) => t >= zoom.start && t < zoom.end + ZOOM_LIMITS.ease);
+  const z = zooms.find((zoom) => t >= zoom.start && t < zoom.end + ZOOM_LIMITS.easeOut);
   if (!z) return undefined;
-  const ease = { fps, config: { damping: 200 }, durationInFrames: Math.round(ZOOM_LIMITS.ease * fps) };
-  const zoomIn = spring({ frame: frame - Math.round(z.start * fps), ...ease });
-  const zoomOut = spring({ frame: frame - Math.round(z.end * fps), ...ease });
+  const ease = (seconds: number) => ({ fps, config: { damping: 200 }, durationInFrames: Math.max(1, Math.round(seconds * fps)) });
+  const zoomIn = spring({ frame: frame - Math.round(z.start * fps), ...ease(ZOOM_LIMITS.ease) });
+  const zoomOut = spring({ frame: frame - Math.round(z.end * fps), ...ease(ZOOM_LIMITS.easeOut) });
   const p = Math.max(0, Math.min(1, zoomIn - zoomOut));
   const scale = 1 + (z.scale - 1) * p;
   const win = zoomWindow(z.x, z.y, scale);
