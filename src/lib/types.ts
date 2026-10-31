@@ -73,6 +73,7 @@ export interface Zoom {
   y: number;
   scale: number; // 1.2–2.5
   enabled: boolean;
+  click?: { time: number; x: number; y: number }; // a click zoom: when and where you clicked (source seconds, 0–1), for the ripple
 }
 
 export interface Visuals {

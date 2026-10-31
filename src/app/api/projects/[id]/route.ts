@@ -155,6 +155,8 @@ function applyZooms(p: Project, z: { enabled?: unknown; items?: unknown }) {
           scale: Math.max(ZOOM_LIMITS.minScale, Math.min(ZOOM_LIMITS.maxScale, num(raw.scale) ?? ZOOM_LIMITS.defaultScale)),
           enabled: raw.enabled !== false,
         };
+        const click = num(raw.click?.time);
+        if (click !== null) zoom.click = { time: Math.max(0, Math.min(d, click)), x: unit(raw.click.x), y: unit(raw.click.y) };
         return zoom.end > zoom.start ? zoom : null;
       })
       .filter((x): x is Zoom => x !== null)

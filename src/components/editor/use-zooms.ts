@@ -49,7 +49,7 @@ export function useZooms(
       const start = Math.max(0, Math.min(t, plan.outputDuration - ZOOM_LIMITS.minLength));
       const end = Math.min(plan.outputDuration, start + ZOOM_LIMITS.defaultLength);
       if (!fitsBetween(asOutput, start, end)) {
-        return toast("Too close to another zoom", { description: `Keep zooms at least ${ZOOM_LIMITS.minGap}s apart.` });
+        return toast("Overlaps another zoom", { description: "Zooms can't overlap. Ones close together glide from one to the next." });
       }
       const zoom: Zoom = {
         id: newZoomId(),

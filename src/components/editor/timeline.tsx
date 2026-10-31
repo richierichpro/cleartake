@@ -223,7 +223,7 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
           else if (drag?.mode === "zoom") {
             zooms.select(drag.id);
             if (drag.moved && !zooms.setRange(drag.id, drag.s, drag.e)) {
-              toast("Too close to another zoom", { description: `Keep zooms at least ${ZOOM_LIMITS.minGap}s apart.` });
+              toast("Overlaps another zoom", { description: "Zooms can't overlap. Ones close together glide from one to the next." });
             }
           }
           setDrag(null);
@@ -421,7 +421,7 @@ export function Timeline({ playback, zoom, thumbnailUrl, segments, voice, plan, 
                       style={{ top: ZOOM_TOP, height: ZOOM_H, left: xOf(hoverT), width: (end - hoverT) * pps }}
                     >
                       {ok && <Plus className="size-3 shrink-0" />}
-                      <span className="truncate">{ok ? "Add zoom" : `Too close · keep ${ZOOM_LIMITS.minGap}s apart`}</span>
+                      <span className="truncate">{ok ? "Add zoom" : "Overlaps a zoom"}</span>
                     </div>
                   );
                 })()

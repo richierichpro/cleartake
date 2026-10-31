@@ -8,7 +8,9 @@ export const ZOOM_LIMITS = {
   minScale: 1.2,
   maxScale: 2.5,
   defaultScale: 1.6,
-  minGap: 1, // seconds of full screen between zooms (output seconds); was 3, but quick clicks each deserve a zoom
+  minGap: 0, // zooms only can't overlap (output seconds); close ones glide (was 3s, then 1s: quick clicks each deserve a zoom)
+  glideGap: 1, // a zoom starting this soon after the previous one ends glides there: the camera stays zoomed and pans
+  minHold: 0.35, // auto zooms: a click zoom cut short by the next one keeps at least this long (quick clicks: the camera follows)
   defaultLength: 1.8, // a zoom added by hand, and the shortest automatic one (edited video)
   minLength: 1,
   ease: 0.5, // seconds to spring in
@@ -24,7 +26,15 @@ export const zoomsOf = (p: Project) => ({ enabled: p.zooms?.enabled ?? true, ite
 export const newZoomId = () => `zm${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
 /** A zoom as the composition plays it: output seconds. */
-export type OutputZoom = { id: string; start: number; end: number; x: number; y: number; scale: number };
+export type OutputZoom = {
+  id: string;
+  start: number;
+  end: number;
+  x: number;
+  y: number;
+  scale: number;
+  click?: { time: number; x: number; y: number };
+};
 
 /** Enabled zooms mapped to the edited video. `exclude` leaves one out (while you aim it). */
 export function outputZooms(project: Project, plan: SyncPlan, exclude?: string | null): OutputZoom[] {
@@ -32,8 +42,14 @@ export function outputZooms(project: Project, plan: SyncPlan, exclude?: string |
   if (!enabled) return [];
   return items
     .filter((z) => z.enabled && z.id !== exclude)
-    .map((z) => ({ ...z, start: sourceToOutput(plan, z.start), end: sourceToOutput(plan, z.end) }))
-    .filter((z) => z.end - z.start > 0.2); // cut away entirely
+    .map((z) => ({
+      ...z,
+      start: sourceToOutput(plan, z.start),
+      end: sourceToOutput(plan, z.end),
+      click: z.click && { ...z.click, time: sourceToOutput(plan, z.click.time) },
+    }))
+    .filter((z) => z.end - z.start > 0.2) // cut away entirely
+    .sort((a, b) => a.start - b.start);
 }
 
 /** The part of the recording visible at this scale and focus, 0–1, kept inside the frame. */
@@ -67,6 +83,7 @@ export function fitsBetween(zooms: { id: string; start: number; end: number }[],
 /**
  * Zooms from the Step 12 suggestions, keeping the gap rule against `taken` (output seconds).
  * Sped-up paragraphs compress source time, so each zoom keeps at least defaultLength of the edited video.
+ * Quick clicks: a zoom that would overlap the previous new one cuts it short (they glide from one to the next).
  */
 export function zoomsFromSuggestions(
   candidates: (ZoomCandidate & { reason?: string })[],
@@ -77,14 +94,25 @@ export function zoomsFromSuggestions(
   const added: Zoom[] = [];
   for (const c of candidates) {
     const subtle = c.reason === "click";
-    const z = subtle
-      ? { ...zoomFromSuggestion(c), start: Math.max(0, c.start - ZOOM_LIMITS.subtleLead), scale: ZOOM_LIMITS.subtleScale }
+    const z: Zoom = subtle
+      ? {
+          ...zoomFromSuggestion(c),
+          start: Math.max(0, c.start - ZOOM_LIMITS.subtleLead),
+          scale: ZOOM_LIMITS.subtleScale,
+          click: { time: c.start, x: c.x + c.w / 2, y: c.y + c.h / 2 },
+        }
       : zoomFromSuggestion(c);
     const length = subtle ? ZOOM_LIMITS.subtleLength : ZOOM_LIMITS.defaultLength;
     const out = { id: z.id, start: sourceToOutput(plan, z.start), end: sourceToOutput(plan, z.end) };
     if (out.end - out.start < length) {
       out.end = Math.min(plan.outputDuration, out.start + length);
       z.end = outputToSource(plan, out.end);
+    }
+    const prev = added.at(-1);
+    const prevOut = prev && used.find((u) => u.id === prev.id);
+    if (prev && prevOut && out.start < prevOut.end && out.start - prevOut.start >= ZOOM_LIMITS.minHold) {
+      prevOut.end = out.start;
+      prev.end = outputToSource(plan, out.start);
     }
     if (out.end - out.start < 0.5 || !fitsBetween(used, out.start, out.end)) continue;
     used.push(out);
