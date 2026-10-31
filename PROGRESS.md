@@ -298,6 +298,6 @@ actions:   { kind: "cut" | "fast", start, end, reason }[]                       
 
 ## Deploy (Render)
 - `Dockerfile` (Node 22, ffmpeg, Tesseract, fonts, Chrome libraries; the Remotion browser is downloaded at build time) and `render.yaml` (Blueprint: 2 GB web service in Singapore, 5 GB disk at /app/data, secrets asked at creation).
-- Password gate (`src/proxy.ts`, `lib/auth.ts`): on when `APP_PASSWORD` is set (Basic auth, any user name). The upload moved to `/api/upload`, outside the Proxy (it buffers bodies and cuts them at 10MB), and checks the password itself. The export renderer's media links carry `?key=` (a hash of the password); in production it loads media from 127.0.0.1.
+- Password gate (`src/proxy.ts`, `lib/auth.ts`): off by default (the deployed site is open, by choice); on when `APP_PASSWORD` is set (Basic auth, any user name). The upload moved to `/api/upload`, outside the Proxy (it buffers bodies and cuts them at 10MB), and checks the password itself. The export renderer's media links carry `?key=` (a hash of the password); in production it loads media from 127.0.0.1.
 - OCR off macOS: Tesseract (`--psm 11`, words grouped into lines, frames under 2000px doubled). On the Bolna frame it finds API Keys / Developers / New Agent where Vision does; misses light text on coloured buttons. `OCR_ENGINE=vision|tesseract` overrides.
 - The sample project (data/samples) isn't deployed (data/ is ignored); the home page hides the sample link when it's missing.
