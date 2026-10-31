@@ -1,0 +1,21 @@
+# Render Blueprint: one web service from the Dockerfile, with a disk for projects (videos, voices, exports).
+# Secrets are asked for when you create the Blueprint (sync: false), never stored here.
+services:
+  - type: web
+    name: cleartake
+    runtime: docker
+    plan: 1c-2g # exports run a headless browser; 512 MB isn't enough
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    autoDeployTrigger: commit
+    envVars:
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: APP_PASSWORD # the site asks for it (any user name); keeps strangers off your API credits
+        sync: false
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 5
