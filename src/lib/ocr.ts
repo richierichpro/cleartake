@@ -29,9 +29,14 @@ async function ensureBinary() {
   }
 }
 
-/** Grabs full-resolution frames at the given source times and reads the text on them. */
+/**
+ * Grabs full-resolution frames at the given source times and reads the text on them. The reader is
+ * macOS's Vision framework; elsewhere (a Linux server) nothing is read, so zooms on named elements are
+ * skipped (click and typing zooms don't need it).
+ */
 export async function ocrFrames(video: string, times: number[]): Promise<OcrItem[][]> {
   if (!times.length) return [];
+  if (process.platform !== "darwin") return times.map(() => []);
   await ensureBinary();
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "cleartake-ocr-"));
   try {

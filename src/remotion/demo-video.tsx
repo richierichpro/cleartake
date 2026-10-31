@@ -30,7 +30,7 @@ export type DemoVideoProps = {
 
 const frames = (seconds: number) => Math.round(seconds * FPS);
 
-const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif'; // Inter on a Linux server
 const ACCENT = "#FF5C35";
 const INK = "#111113";
 const FADE = 8; // frames for scene fades

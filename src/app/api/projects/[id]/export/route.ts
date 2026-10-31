@@ -21,7 +21,9 @@ export async function POST(req: Request, ctx: RouteContext<"/api/projects/[id]/e
   const body = (await req.json().catch(() => ({}))) as { quality?: string };
   const quality = EXPORT_QUALITIES.some((q) => q.id === body.quality) ? (body.quality as ExportQuality) : undefined;
   try {
-    await startExport(id, new URL(req.url).origin, quality);
+    // On a server, the renderer loads media from this process directly, not through the public URL.
+    const origin = process.env.NODE_ENV === "production" ? `http://127.0.0.1:${process.env.PORT ?? 3000}` : new URL(req.url).origin;
+    await startExport(id, origin, quality);
     return Response.json((await readProject(id))?.export ?? null);
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : "Export failed to start" }, { status: 409 });
